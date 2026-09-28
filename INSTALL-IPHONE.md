@@ -36,6 +36,14 @@ identity and profile. Check Madeira's Entitlements screen after installation.
 4. Start with **1280x720**, **30 FPS**, **CPU count 4**, and **Performance**
    enabled. Adjust after confirming a stable launch.
 
-GTA V is not verified on a physical iPhone. Current Madeira does not support
-Rockstar Games Launcher/Social Club, which retail GTA V normally requires; a
-direct `GTA5.exe` launch is diagnostic only.
+## GTA V compatibility
+
+The Discord release note shared for this build says the release does not
+support third-party launchers such as Rockstar Games Launcher. Madeira Dock
+being available, or optionally installing the Windows Steam client, does not
+add Rockstar Launcher/Social Club support; the Windows Steam client also uses
+more CPU and memory. Retail GTA V normally requires Rockstar authentication,
+so this build is not established as compatible with GTA V. A direct
+`GTA5.exe` launch is diagnostic only, not a supported workaround. Do not treat
+GTA V as working unless Rockstar launcher support is added and the game is
+verified on a physical device.

@@ -132,7 +132,13 @@ log.
 
 ## Runtime limitation
 
-GTA V has not been verified on a physical iPhone. Madeira currently lacks
-Rockstar Games Launcher/Social Club support, which retail GTA V normally
-requires. A direct `GTA5.exe` launch is diagnostic only. This remains a known
-runtime blocker, not an iOS build failure.
+GTA V has not been verified on a physical iPhone. The Discord release note
+provided for this task says the release does not support third-party launchers
+such as Rockstar Games Launcher. Madeira Dock availability, or optionally
+installing the Windows Steam client, does not provide Rockstar Launcher/Social
+Club support; the Windows Steam client also uses more CPU and memory. Retail
+GTA V normally requires Rockstar authentication, so this build is not
+established as compatible with GTA V. A direct `GTA5.exe` launch is diagnostic
+only, not a supported workaround. GTA V remains a known runtime blocker, not an
+iOS build failure; it must not be called working without launcher support and
+physical-device verification.
