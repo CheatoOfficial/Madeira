@@ -2463,6 +2463,23 @@ final class OnScreenPad {
         HardwareInput.shared.padScreenPresence(n > 0)
     }
 
+    /// ml1490: unplug and plug the on-screen pad back in, as hiding and showing
+    /// the controls does. Main thread. Nothing to do without pad controls.
+    func rearm() {
+        lock.lock()
+        let n = present
+        lock.unlock()
+        guard n > 0 else { return }
+        fputs("[xinput] ml1490 onscreen controls re-armed after editing (regions=\(n))\n", stderr)
+        HardwareInput.shared.padScreenPresence(false)
+        // Long enough for a game polling once a frame or slower to see the
+        // pad go away, which a toggle by hand always was.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, self.isLive else { return }
+            HardwareInput.shared.padScreenPresence(true)
+        }
+    }
+
     // MARK: contributions (main thread)
 
     func press(_ rid: String, _ b: PadButton) {
@@ -3871,6 +3888,10 @@ struct ContentView: View {
     @State private var showRenameLaunchAlert = false
     @State private var renameLaunchButtonPath: String?
     @State private var renameLaunchButtonText: String = ""
+    /// ml1520: "Use New Interface" (actionButtons) applies at the next start.
+    @State private var showFrontendRestart = false
+    @State private var eulaPrompt: SteamEulaPrompt?   // ml1710
+    @State private var eulaCleared: Set<Int> = []      // ml1710: apps checked this app run
     /// Fixed tint cycle for `customLaunchButtons` so neighbouring
     /// user-added buttons are visually distinct; wraps by index.
     private static let customButtonTints: [Color] = [
@@ -3899,6 +3920,7 @@ struct ContentView: View {
     /// boot-failure timeout, or a pool-allocation failure) — see the three
     /// `isLaunching = false` sites inside that function.
     @State private var isLaunching = false
+    @State private var dockPreparing = false
 
     /// ml — THE LOADING SPINNER.
     ///
@@ -4025,6 +4047,30 @@ struct ContentView: View {
                         portraitBody
                     }
                 }
+                .sheet(item: $eulaPrompt) { prompt in
+                    SteamEulaSheet(prompt: prompt,
+                                   accept: { acceptEula(prompt) },
+                                   cancel: {
+                                       eulaPrompt = nil; eulaCleared.remove(prompt.appID)
+                                       LogStore.shared.log("[steam-eula] ml1710 app \(prompt.appID) declined; launch cancelled")
+                                   })
+                }
+                // ml1780: "Skip one-time installs" ended the session; start the game again once
+                // Wine has fully stopped (launchLibraryEntry marks the installs first).
+                .onChange(of: library.relaunchRequest?.id) { _, id in
+                    guard id != nil, let entry = library.relaunchRequest else { return }
+                    library.relaunchRequest = nil
+                    relaunchWhenStopped(entry, attempt: 0)
+                }
+                // ml1790: a second session cannot start in this process; offer to close Madeira.
+                .alert("Restart Madeira", isPresented: Binding(get: { library.restartNotice != nil },
+                                                                set: { if !$0 { library.restartNotice = nil } })) {
+                    Button("Close Madeira") {
+                        LogStore.shared.log("[session-once] ml1790 closed by the user for a restart")
+                        exit(0)
+                    }
+                    Button("Later", role: .cancel) { library.restartNotice = nil }
+                } message: { Text(library.restartNotice ?? "") }
                 // ml — belt-and-suspenders for the cold-landscape-launch fix in
                 // `controlOverlayWindowBounds`: this `geo` is the exact source
                 // of truth this same reader uses to pick wideNormalBody over
@@ -4055,10 +4101,23 @@ struct ContentView: View {
                 jit_install_trap_handler()
                 // ml1330: StikDebug is closed by iOS about a minute after it
                 // attaches; take the process-lifetime JIT pool while it is here.
-                StikJITHelper.prepareEarlyPool(trigger: "start")
+                // ml1780: optionally after the first frame. The allocation BRK stops the whole
+                // process while StikDebug maps the pool (3.2-4.0 s in device logs 49-51).
+                // ml1790: OPT-IN again (MADEIRA_JIT_EARLY_DEFER=1). Deferred, the library showed
+                // but ignored touches for those seconds and read as a hang (owner), and the later
+                // placement in log 52 took 23.6 s and settled for a 640 MB pool.
+                if LibraryFlags.enabled("MADEIRA_JIT_EARLY_DEFER", fallback: false) {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        logStore.log("[jit-early] ml1780 deferred past the first frame")
+                        StikJITHelper.prepareEarlyPool(trigger: "start")
+                    }
+                } else {
+                    StikJITHelper.prepareEarlyPool(trigger: "start")
+                }
                 entitlements = EntitlementStatus.check()
                 logEntitlementStatus()
                 logStore.log("[build] ml1420 \(BuildStamp.text)")
+                FrontendChoice.logStartup()
                 // WOW64_DESIGN.md §9.2 step 0: measure the free VA map before
                 // Wine/JIT touches it. Read-only, no behaviour change.
                 mad_va_probe(entitlements?.extendedVA ?? false)
@@ -4742,6 +4801,7 @@ struct ContentView: View {
                     setenv("MADEIRA_ARGS",
                            "/desktop=shell,\(deskW)x\(deskH) C:\\windows\\system32\\services.exe", 1)
                     setenv("MADEIRA_DESKTOP", "1", 1)
+                    unsetenv("MADEIRA_STEAM_APPID")   // ml1490: no leaked store identity
                     setenv("MADEIRA_SCREEN_W", String(deskW), 1)
                     setenv("MADEIRA_SCREEN_H", String(deskH), 1)
                     // explorer owns the size in desktop mode; say so in the
@@ -4770,6 +4830,7 @@ struct ContentView: View {
                         setenv("MADEIRA_EXE", test.exe, 1)
                         unsetenv("MADEIRA_ARGS")
                         unsetenv("MADEIRA_DESKTOP")
+                        unsetenv("MADEIRA_STEAM_APPID")   // ml1490: no leaked store identity
                         runWineFullSequence()
                     }
                     .buttonStyle(.borderedProminent)
@@ -4816,8 +4877,21 @@ struct ContentView: View {
                 }
                 .buttonStyle(.bordered)
                 .tint(.red)
+
+                // ml1520: back to the library interface (FrontendChoice), at the next start.
+                Button("Use New Interface") {
+                    FrontendChoice.choose(new: true)
+                    showFrontendRestart = true
+                }
+                .buttonStyle(.bordered)
+                .tint(.indigo)
             }
             .padding()
+        }
+        .alert("Restart Madeira", isPresented: $showFrontendRestart) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Close Madeira from the app switcher and open it again to use the new interface.")
         }
         // Modal popup rather than the old 2-line text-field row (removed —
         // it crashed): an .alert can't be laid out wrong, and it cannot
@@ -4882,6 +4956,8 @@ struct ContentView: View {
         setenv("MADEIRA_EXE", trimmed, 1)
         unsetenv("MADEIRA_ARGS")
         unsetenv("MADEIRA_DESKTOP")
+        // ml1490: a library launch's store identity must not reach this program.
+        unsetenv("MADEIRA_STEAM_APPID")
         runWineFullSequence()
     }
 
@@ -5168,8 +5244,19 @@ struct ContentView: View {
     /// Debugger stays attached during PE loading so mprotect_exec can use BRK
     /// to prepare code pages. Detach happens after Wine finishes + recovery.
     private func launchLibraryEntry(_ entry: LibraryEntry) {
-        guard !isLaunching, wine_process_is_running() == 0, wineserver_is_running() == 0, library.current == nil else {
+        let entry = SteamAccountModel.shared.restoreDefaultArguments(entry)
+        guard !isLaunching, !dockPreparing, wine_process_is_running() == 0, wineserver_is_running() == 0, library.current == nil else {
             library.error = "A session is already running."; return
+        }
+        // ml1540: setup's Steam install ran a session in this app run; a game needs a fresh run.
+        if OnboardingModel.restartAdvised, OnboardingModel.restartPromptEnabled, entry.steamSession != "installer" {
+            LogStore.shared.log("[onboarding] ml1540 launch held until Madeira restarts")
+            library.error = OnboardingModel.restartMessage; return
+        }
+        // ml1790: one Wine session per app run (see LibraryModel.sessionsThisRun).
+        if LibraryModel.sessionsThisRun > 0, LibraryFlags.enabled("MADEIRA_ONE_SESSION_PER_RUN") {
+            LogStore.shared.log("[session-once] ml1790 launch held: \(LibraryModel.sessionsThisRun) session(s) already ran in this app run")
+            library.restartNotice = LibraryModel.restartMessage; return
         }
         // ml1330: "ready" means a JIT pool exists or a debugger that can grant one
         // is attached now. CS_DEBUGGED alone stays set after StikDebug is gone.
@@ -5181,14 +5268,132 @@ struct ContentView: View {
             return
         }
         do { if entry.desktop != true { _ = try LibraryModel.executable(entry.relativePath) }; try entry.validate() }
-        catch { library.error = error.localizedDescription; return }
+        catch {
+            library.error = error.localizedDescription
+            logStore.log("[launch-preflight] ml1960 profile validation failed: \(error.localizedDescription)", level: .error)
+            return
+        }
         guard entry.windowsPath.utf8.count < 1024, entry.arguments.utf8.count < 1024 else {
             library.error = "The executable path or launch arguments are too long."; return
         }
+        // ml1710: answer the game's license agreements here, before the client starts, instead
+        // of inside the client window a -silent launch keeps hidden. Only games whose Steam app
+        // info lists an agreement that this prefix has not recorded ever see the sheet.
+        // MADEIRA_STEAM_EULA_NATIVE=0 leaves it to the client as before.
+        if entry.steamGameLaunch, let appID = entry.steamAppID, !eulaCleared.contains(appID),
+           LibraryFlags.enabled("MADEIRA_STEAM_EULA_NATIVE") {
+            // ml1720: the CLIENT's folder. relativePath is the game's executable for a native
+            // install, which put this check in the game's Binaries folder: no userdata there,
+            // so every agreement read as already accepted and the sheet never appeared.
+            let steamRoot = LibraryModel.drive.appendingPathComponent(entry.steamClientRelativePath).deletingLastPathComponent()
+            eulaCleared.insert(appID)
+            library.error = nil
+            Task { @MainActor in
+                let eulas = await SteamAccountModel.shared.eulas(for: appID)
+                let missing = eulas.map { SteamEulaStore.missing(appID: appID, eulas: $0, steamRoot: steamRoot) } ?? []
+                LogStore.shared.log("[steam-eula] ml1720 app \(appID) listed=\(eulas?.count ?? -1) missing=\(missing.count) configs=\(SteamEulaStore.configFiles(steamRoot: steamRoot).count)")
+                if missing.isEmpty { launchLibraryEntry(entry) }
+                else {
+                    // ml1970: the held details page closes first so this sheet can present.
+                    library.closeDetail &+= 1
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                        eulaPrompt = SteamEulaPrompt(entry: entry, appID: appID, eulas: missing, steamRoot: steamRoot)
+                    }
+                }
+            }
+            return
+        }
+        // ml1780: mark the game's one-time installs done before the client starts (no session runs
+        // here, so the registry is on disk). MADEIRA_STEAM_SKIP_INSTALLERS=0 leaves them to the client.
+        // ml1970: a Madeira Dock start handles them itself (DockInstallScripts).
+        MadeiraDock.installerScript = nil
+        if entry.steamGameLaunch, MadeiraDock.routes(entry), LibraryFlags.enabled("MADEIRA_DOCK_INSTALLERS") {
+            LibraryModel.prepareDockInstallers(entry)
+        } else if entry.steamGameLaunch, entry.steamRunInstallers != true, LibraryFlags.enabled("MADEIRA_STEAM_SKIP_INSTALLERS") {
+            LibraryModel.markSteamInstallers(entry, reason: "launch")
+        }
+        if entry.steamGameLaunch, LibraryFlags.enabled("MADEIRA_STEAM_INSTALL_REGISTRY"),
+           let folder = LibraryModel.steamInstallFolder(entry) {
+            do {
+                let root = LibraryModel.drive.appendingPathComponent(entry.steamClientRelativePath).deletingLastPathComponent()
+                let count = try SteamInstallRegistry.prepare(folder: folder, drive: LibraryModel.drive, steamRoot: root)
+                logStore.log("[steam-registry] ml1960 app=\(entry.steamAppID ?? 0) values-written=\(count)")
+            } catch {
+                library.error = "Game installation setup failed. " + error.localizedDescription
+                logStore.log("[steam-registry] ml1960 preparation failed", level: .error)
+                return
+            }
+        }
         SteamLibraryModel.shared.stopScan()
-        entry.configureLaunch()
+        if MadeiraDock.routes(entry) {
+            dockPreparing = true
+            Task { @MainActor in
+                do {
+                    try await SteamAccountModel.shared.prepareDock(entry)
+                    guard StikJITHelper.readyToLaunch, wine_process_is_running() == 0,
+                          wineserver_is_running() == 0, library.current == nil else {
+                        throw LibraryError.message("The launch state changed. Enable JIT and try again.")
+                    }
+                    entry.configureLaunch(dock: true)
+                    // ml1990: the install record lists per-user custom executables (CEG); Dock asks
+                    // Valve's client to prepare them before it launches. MADEIRA_DOCK_CEG=0 never asks.
+                    let ceg = LibraryFlags.enabled("MADEIRA_DOCK_CEG") && MadeiraDock.hasCustomExecutables(appID: entry.steamAppID ?? 0)
+                    if ceg { setenv("MADEIRA_STEAM_HOST_CEG", "1", 1) } else { unsetenv("MADEIRA_STEAM_HOST_CEG") }
+                    LogStore.shared.log("[dock-ceg] ml1990 app=\(entry.steamAppID ?? 0) custom-executables=\(ceg ? 1 : 0)")
+                    library.begin(entry, dock: true)
+                    dockPreparing = false
+                    LogStore.shared.log("[madeira-dock] ml1830 starting bundled host; Valve must authenticate and authorize launch")
+                    runWineFullSequence(profile: entry, dock: true)
+                } catch {
+                    dockPreparing = false
+                    SteamAccountModel.shared.sessionChanged(active: false)
+                    MadeiraDock.cleanup()
+                    library.error = "Madeira Dock could not prepare the Steam session. " + error.localizedDescription
+                    LogStore.shared.log("[madeira-dock] ml1830 preparation failed; game not launched", level: .error)
+                }
+            }
+            return
+        }
+        entry.configureLaunch(dock: false)
         library.begin(entry)
+        // ml1720: log Madeira's own Steam connection off before the Windows client signs in.
+        // This was left to the library view's onChange, which does not fire when the game view
+        // replaces the library first; the two sign-ins then replaced each other's session
+        // ("not auto reconnecting due to Session Replaced") in 5 of 9 device launches.
+        if entry.usesSteam { SteamAccountModel.shared.sessionChanged(active: true) }
         runWineFullSequence(profile: entry)
+    }
+
+    /// ml1780: waits (up to 15 s) for the ended session's Wine threads (the wineserver writes the
+    /// registry as it stops), then marks the installs. ml1790: no relaunch in this process (a
+    /// second session aborts in init_registry, device log 52); Madeira asks for a restart.
+    private func relaunchWhenStopped(_ entry: LibraryEntry, attempt: Int) {
+        if wine_process_is_running() == 0, wineserver_is_running() == 0, library.current == nil {
+            let found = LibraryModel.markSteamInstallers(entry, reason: "skip")
+            LogStore.shared.log("[steam-installers] ml1790 skip marked app=\(entry.steamAppID ?? 0) entries=\(found) after=\(attempt * 500)ms")
+            library.restartNotice = found > 0
+                ? "The one-time installs are skipped. " + LibraryModel.restartMessage + " Then tap Play."
+                : "Madeira could not find this game's install script, so Steam will ask again. " + LibraryModel.restartMessage
+        } else if attempt < 30 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { relaunchWhenStopped(entry, attempt: attempt + 1) }
+        } else {
+            LogStore.shared.log("[steam-installers] ml1790 skip gave up: the session did not stop")
+            library.restartNotice = LibraryModel.restartMessage
+        }
+    }
+
+    /// ml1710: the user accepted in Madeira's sheet; record it where the client looks, then launch.
+    /// A failed write still launches: the client then asks as it always did.
+    private func acceptEula(_ prompt: SteamEulaPrompt) {
+        eulaPrompt = nil
+        do {
+            let files = try SteamEulaStore.record(appID: prompt.appID, eulas: prompt.eulas, steamRoot: prompt.steamRoot)
+            LogStore.shared.log("[steam-eula] ml1710 app \(prompt.appID) accepted \(prompt.eulas.map(\.id).joined(separator: ",")) recorded in \(files) file(s)")
+        } catch {
+            LogStore.shared.log("[steam-eula] ml1710 app \(prompt.appID) accepted but could not be recorded: \(error.localizedDescription)", level: .error)
+        }
+        // Let the sheet finish dismissing before the session takes the screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { launchLibraryEntry(prompt.entry) }
     }
 
     /// ml1330: JIT was enabled earlier in this run but StikDebug has since gone
@@ -5214,13 +5419,13 @@ struct ContentView: View {
         }
     }
 
-    private func runWineFullSequence(profile: LibraryEntry? = nil) {
+    private func runWineFullSequence(profile: LibraryEntry? = nil, dock: Bool = false) {
         // ml: THE RELAUNCH GUARD. See isLaunching's doc comment. Every early
         // return on this path — this one included — logs a
         // "[launch] ignored: <reason>" line through the app's normal log
         // function (so it lands in the exported log, not just stderr), so a
         // tap that does nothing visible ALWAYS has a reason on record.
-        guard !isLaunching else {
+        guard !isLaunching, !dockPreparing else {
             logStore.log("[launch] ignored: a session is already launching or running — "
                          + "wait for it to finish (or its boot to fail/time out) before trying again",
                          level: .error)
@@ -5228,6 +5433,11 @@ struct ContentView: View {
         }
         guard StikJITHelper.readyToLaunch else {
             logStore.log("[launch] ignored: no JIT pool and no attached debugger — press 'Enable JIT' first", level: .error)
+            return
+        }
+        if StikJITHelper.reserveDesktopPoolIfNeeded(desktop: getenv("MADEIRA_DESKTOP") != nil, dock: dock) {
+            library.launchFailed()
+            library.error = "Opening the Windows desktop needs more memory reserved at startup. Close Madeira completely, reopen it, enable JIT, then open the desktop again."
             return
         }
         isLaunching = true
@@ -5238,6 +5448,16 @@ struct ContentView: View {
         // comment in Winios.m) must not carry into this one before its own
         // first pSetCursor call.
         winios_cursor_show(0)
+
+        /* ml1095: one config file. Written once from any legacy madeira-*.txt. */
+        MadeiraConfig.migrateLegacy { self.logStore.log($0) }
+        MadeiraConfig.deleteLegacyFiles { self.logStore.log($0) }   /* ml1096: the old files go once the cfg exists */
+        if MadeiraConfig.present {
+            let cfg = MadeiraConfig.all().sorted { $0.key < $1.key }
+            logStore.log("madeira.cfg: " + (cfg.isEmpty ? "(empty)" : cfg.map { "\($0.key)=\($0.value)" }.joined(separator: " ")))
+        } else {
+            logStore.log("madeira.cfg absent: legacy madeira-*.txt files apply")
+        }
 
         logStore.log("Running full Wine sequence...")
 
@@ -5376,15 +5596,22 @@ struct ContentView: View {
             //     [jit-pool] TAIL REFUSED (FEX EC_CODE): ...
             // with the exact numbers. The line below names the knob in the same
             // breath so a log reader never has to know this file exists.
-            let isDesktopFanout = getenv("MADEIRA_DESKTOP") != nil
+            // ml1880: Dock keeps explorer as a launcher, but has no desktop
+            // Steam/CEF fan-out. Device logs 62/63 used about 230 MB of code.
+            let compactDock = dock && LibraryFlags.enabled("MADEIRA_DOCK_COMPACT_POOL")
+            let isDesktopFanout = getenv("MADEIRA_DESKTOP") != nil && !compactDock
             var poolSizeMB = isDesktopFanout ? 896 : 512
             var poolSource = isDesktopFanout ? "desktop-session default" : "direct-launch default"
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-pool.txt"), encoding: .utf8),
+            if compactDock { poolSource = "Dock compact default, ml1880" }
+            if let txt = MadeiraConfig.get("pool"),
                let mb = Int(txt.trimmingCharacters(in: .whitespacesAndNewlines)),
                mb >= 256, mb <= 1152 {
                 poolSizeMB = mb
                 poolSource = "madeira-pool.txt override"
+            }
+            let pressureFloor = StikJITHelper.poolPressureFloorMB
+            if poolSource != "madeira-pool.txt override", pressureFloor > poolSizeMB {
+                poolSizeMB = pressureFloor; poolSource = "an earlier session ran the pool dry, ml2000"
             }
             logStore.log("JIT pool \(poolSizeMB)MB (\(poolSource)) — raise it with " +
                          "Documents/madeira-pool.txt (bare MB, 256..1152) if the log shows [jit-pool] EXHAUSTED")
@@ -5429,11 +5656,10 @@ struct ContentView: View {
             // comparison needs one rebuild, not two. The previous gate read
             // container paths that can never exist, so it silently forced
             // ENABLED and no A/B was actually possible.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-wx.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("wx") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 setenv("MADEIRA_WX", v, 1)
-                logStore.log("W^X override: MADEIRA_WX=\(v) via madeira-wx.txt")
+                logStore.log("W^X override: MADEIRA_WX=\(v) via madeira.cfg wx")
             }
 
             // ml727: wine-mono backpatcher bridge A/B. Documents/madeira-mono-bridge.txt
@@ -5445,12 +5671,11 @@ struct ContentView: View {
             // Worth arming here: the dominant fault site emits SWPAL, which is exactly
             // what FEX generates for a guest XCHG, and the patching XCHGs sit inside
             // libmono -- so the bridge's "RIP must lie inside Mono" test should pass.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-mono-bridge.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("mono-bridge") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !v.isEmpty {
                     setenv("MADEIRA_WINEMONO_BRIDGE", v, 1)
-                    logStore.log("Mono bridge: MADEIRA_WINEMONO_BRIDGE=\(v) via madeira-mono-bridge.txt")
+                    logStore.log("Mono bridge: MADEIRA_WINEMONO_BRIDGE=\(v) via madeira.cfg mono-bridge")
                 }
             }
 
@@ -5459,12 +5684,11 @@ struct ContentView: View {
             // using its saved Wine syscall frame (TEB+0x378) instead of the Mach-O
             // registers it happens to be executing. Off by default; native code reads
             // only the environment variable.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-ctx-frame.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("ctx-frame") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !v.isEmpty {
                     setenv("MADEIRA_CTX_FRAME", v, 1)
-                    logStore.log("Context source: MADEIRA_CTX_FRAME=\(v) via madeira-ctx-frame.txt")
+                    logStore.log("Context source: MADEIRA_CTX_FRAME=\(v) via madeira.cfg ctx-frame")
                 }
             }
 
@@ -5474,12 +5698,11 @@ struct ContentView: View {
             // d3d11.mipClampBC=N is the one that matters for memory: this GPU cannot
             // sample BC, so those textures are expanded to uncompressed and cost 2-8x
             // their shipped size.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-dxmt.txt"), encoding: .utf8) {
-                let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let txt = MadeiraConfig.get("dxmt") {
+                let v = txt.replacingOccurrences(of: ";", with: "\n").trimmingCharacters(in: .whitespacesAndNewlines)   /* ml1095: "a=b;c=d" on one line */
                 if !v.isEmpty {
                     setenv("DXMT_CONFIG", v, 1)
-                    logStore.log("DXMT config: \(v) via madeira-dxmt.txt")
+                    logStore.log("DXMT config: \(v) via madeira.cfg dxmt")
                 }
             }
 
@@ -5531,22 +5754,39 @@ struct ContentView: View {
             // rebuild. Applied before the launch so native code sees it from the
             // first getenv. Only MADEIRA_ and DXMT_ names are honoured, so a stray
             // line cannot redirect PATH or the loader.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-env.txt"), encoding: .utf8) {
-                for raw in txt.split(whereSeparator: { $0.isNewline }) {
-                    let line = raw.trimmingCharacters(in: .whitespaces)
-                    if line.isEmpty || line.hasPrefix("#") { continue }
-                    guard let eq = line.firstIndex(of: "=") else { continue }
-                    let name = String(line[..<eq]).trimmingCharacters(in: .whitespaces)
-                    let value = String(line[line.index(after: eq)...]).trimmingCharacters(in: .whitespaces)
-                    guard name.hasPrefix("MADEIRA_") || name.hasPrefix("DXMT_") else {
-                        logStore.log("madeira-env.txt: ignoring \(name) (only MADEIRA_*/DXMT_* names are honoured)")
-                        continue
-                    }
-                    setenv(name, value, 1)
-                    logStore.log("Env override: \(name)=\(value) via madeira-env.txt")
-                }
+            // ml1840: canonical env.* survives legacy-file cleanup. Both Swift
+            // route selection and the guest must consume the same configuration.
+            let environment = MadeiraConfig.environmentValues()
+            for name in environment.keys.sorted() {
+                setenv(name, environment[name]!, 1)
             }
+            logStore.log("[config-env] ml1840 exported \(environment.count) runtime overrides")
+
+            // ml1880: the census observed >32k calls/frame. Keep frame/memory
+            // telemetry, but avoid counting every D3D9 call in normal Dock play.
+            // Explicit census/diagnostic/forensic requests retain full tracing.
+            if let value = DockPerformancePolicy.censusDefault(dock: dock,
+                lightweight: LibraryFlags.enabled("MADEIRA_DOCK_LIGHT_DIAGNOSTICS"),
+                diagnostic: LibraryFlags.enabled("MADEIRA_DIAG", fallback: false),
+                forensic: LibraryFlags.enabled("MADEIRA_D3D9_LAST", fallback: false)),
+               getenv("MADEIRA_D3D9_CENSUS") == nil {
+                setenv("MADEIRA_D3D9_CENSUS", value, 0)
+            }
+            logStore.log("[dock-perf] ml1880 census=\(getenv("MADEIRA_D3D9_CENSUS").map { String(cString: $0) } ?? "default") frame/memory telemetry retained")
+
+            // ml1940: bound 32-bit Wine heap growth and combine full reserve /
+            // commit requests. Native 64-bit heaps ignore these opt-ins. Keep
+            // explicit per-feature =0 overrides for independent device A/B.
+            if dock {
+                setenv("MADEIRA_HEAP_COMPACT", "1", 0)
+                setenv("MADEIRA_HEAP_COMBINED", "1", 0)
+                setenv("MADEIRA_HEAP_RECLAIM", "1", 0)
+                setenv("MADEIRA_HEAP_STATS", "1", 0)
+                setenv("MADEIRA_CPU_DIAGNOSTICS", "1", 0)
+                setenv("MADEIRA_VA_DIAGNOSTICS", "1", 0)
+            }
+            logStore.log("[dock-heap] ml1940 compact=\(getenv("MADEIRA_HEAP_COMPACT").map { String(cString: $0) } ?? "0") combined=\(getenv("MADEIRA_HEAP_COMBINED").map { String(cString: $0) } ?? "0")")
+            logStore.log("[dock-diagnostics] ml1950 reclaim=\(getenv("MADEIRA_HEAP_RECLAIM").map { String(cString: $0) } ?? "0") heap=\(getenv("MADEIRA_HEAP_STATS").map { String(cString: $0) } ?? "0") cpu=\(getenv("MADEIRA_CPU_DIAGNOSTICS").map { String(cString: $0) } ?? "0")")
 
             // ml962: the 512MB JIT-pool dump is now OPT-IN.
             //
@@ -5719,7 +5959,20 @@ struct ContentView: View {
                 logStore.log("[fex-cfg] host feature probe: " + joined)
             }
             // ===== end FEX JIT settings =========================================
-            profile?.applyEnvironment()
+            // ml1840: the route selected before credential preparation survives
+            // config migration and worker setup. Never silently launch desktop
+            // Steam after a Dock handoff has been prepared.
+            profile?.applyEnvironment(dock: dock)
+            if profile != nil { logStore.log("[launch-route] ml1840 selected=\(dock ? "dock" : "profile") applied-after-config=1") }
+            // ml2015: a Dock start that runs one-time installs uses fastsync for this session even
+            // when madsync is chosen (installers hung under madsync; see prepareDockInstallers).
+            if dock && MadeiraDock.installerScript != nil && MadeiraDock.installerSessionFastsync {
+                setenv("MADEIRA_MADSYNC_SESSION", "0", 1)
+                unsetenv("MADEIRA_FASTSYNC")
+                logStore.log("[sync-engine] ml2015 one-time installs: this session uses fastsync; the next start uses madsync again")
+            } else {
+                unsetenv("MADEIRA_MADSYNC_SESSION")
+            }
 
             // ml734: Theorafile call tracer. Documents/madeira-tf-trace.txt == "1"
             // redirects libtheorafile's tf_* exports through wrappers in
@@ -5729,12 +5982,11 @@ struct ContentView: View {
             // leaves VideoContext. File EOF is not decoder EOS, and a call
             // count cannot tell "tf_eos returns false forever" from "it returns
             // true and the managed side ignores it". Only the return value can.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-tf-trace.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("tf-trace") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !v.isEmpty {
                     setenv("MADEIRA_TF_TRACE", v, 1)
-                    logStore.log("Theorafile tracer: MADEIRA_TF_TRACE=\(v) via madeira-tf-trace.txt")
+                    logStore.log("Theorafile tracer: MADEIRA_TF_TRACE=\(v) via madeira.cfg tf-trace")
                 }
             }
 
@@ -5745,12 +5997,11 @@ struct ContentView: View {
             // every time-gated transition in a managed game waits forever while the
             // renderer keeps drawing. Opt-in only because the old code claimed the
             // write faulted; this should become unconditional once proven.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-usd-time.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("usd-time") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !v.isEmpty {
                     setenv("MADEIRA_USD_TIME", v, 1)
-                    logStore.log("Shared-data clock: MADEIRA_USD_TIME=\(v) via madeira-usd-time.txt")
+                    logStore.log("Shared-data clock: MADEIRA_USD_TIME=\(v) via madeira.cfg usd-time")
                 }
             }
 
@@ -5764,12 +6015,11 @@ struct ContentView: View {
             // freezing a thread that holds the malloc lock or FEX's CodeInvalidationMutex
             // can deadlock whoever suspended it. Windows apps tolerate preemptive suspend
             // because the suspender does not share their heap; here it does.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-real-suspend.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("real-suspend") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !v.isEmpty {
                     setenv("MADEIRA_REAL_SUSPEND", v, 1)
-                    logStore.log("Thread suspension: MADEIRA_REAL_SUSPEND=\(v) via madeira-real-suspend.txt")
+                    logStore.log("Thread suspension: MADEIRA_REAL_SUSPEND=\(v) via madeira.cfg real-suspend")
                 }
             }
 
@@ -5786,12 +6036,11 @@ struct ContentView: View {
             // mid-JIT-block, and that path has never been exercised under FEX. It may
             // trade a deadlock for a worse failure. If it does get in-game, that is NOT
             // evidence for any particular theory of the deadlock.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-mono-suspend.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("mono-suspend") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !v.isEmpty {
                     setenv("MONO_THREADS_SUSPEND", v, 1)
-                    logStore.log("Mono suspend policy: MONO_THREADS_SUSPEND=\(v) via madeira-mono-suspend.txt")
+                    logStore.log("Mono suspend policy: MONO_THREADS_SUSPEND=\(v) via madeira.cfg mono-suspend")
                 }
             }
 
@@ -5799,9 +6048,37 @@ struct ContentView: View {
             logStore.log("Allocating \(poolSizeMB)MB JIT pool (BRK will suspend process)...")
             let t0 = CFAbsoluteTimeGetCurrent()
             let pool = StikJITHelper.allocatePool(poolSize: poolSizeMB * 1024 * 1024)
+            if let pool { StikJITHelper.rememberCompactPool(sizeMB: pool.size / 1024 / 1024, selected: compactDock) }
             let elapsed = CFAbsoluteTimeGetCurrent() - t0
             winios_phase("pool-ready")
             logStore.log("BRK suspension lasted \(String(format: "%.2f", elapsed))s")
+
+            // Arena carver self-test. Documents/madeira-arena-test.txt holds
+            // "churn:N", "ramp:N" or "random:N". Deliberately a SEPARATE file
+            // from madeira-arena.txt: a test that only runs when the feature is
+            // enabled cannot be used to decide whether to enable it.
+            if let txt = MadeiraConfig.get("arena-test") {
+                let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !v.isEmpty {
+                    setenv("MADEIRA_ARENA_TEST", v, 1)
+                    logStore.log("arena carver self-test: \(v)", level: .success)
+                }
+            }
+
+            // ml787: deterministic call-ret allocation failure injection.
+            // Documents/madeira-fexfail.txt holds "reserve:N" or "commit:N".
+            // The containment path it exercises only occurs naturally when a
+            // title exhausts the emulator's address band, and only the reserve
+            // half occurs at all -- an untested cleanup path is an assumption,
+            // so this makes both reproducible on demand. Absent the file
+            // nothing is injected.
+            if let txt = MadeiraConfig.get("fexfail") {
+                let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !v.isEmpty {
+                    setenv("MADEIRA_FEX_FAIL_CALLRET", v, 1)
+                    logStore.log("call-ret failure injection: \(v) via madeira.cfg fexfail", level: .error)
+                }
+            }
 
             // ml762: remote Metal backend. Documents/madeira-remote.txt holds
             // "<host-ip> <token>" and routes winemetal to a Metal daemon on that
@@ -5809,17 +6086,59 @@ struct ContentView: View {
             // process: flipping it later would leave handles from two address
             // spaces alive at the same time, which is precisely what the handle
             // tag exists to make impossible.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-remote.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("remote") {
                 let parts = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                                 .split(separator: " ", maxSplits: 1).map(String.init)
                 if parts.count == 2 {
                     setenv("DXMT_REMOTE_METAL", parts[0], 1)
                     setenv("RMETAL_TOKEN", parts[1], 1)
-                    logStore.log("remote Metal: host=\(parts[0]) via madeira-remote.txt", level: .success)
+                    logStore.log("remote Metal: host=\(parts[0]) via madeira.cfg remote", level: .success)
                 } else if !parts.isEmpty {
-                    logStore.log("madeira-remote.txt needs '<host-ip> <token>'", level: .error)
+                    logStore.log("madeira.cfg remote needs '<host-ip> <token>'", level: .error)
                 }
+            }
+
+            // madeira-d3d12: M1 shader-converter gate, in-app.
+            // Documents/madeira-d3d12.txt == "1" runs the same canary that
+            // passes standalone on macOS and over SSH on this device, but from
+            // inside Madeira -- which is the only way to test bundling, signing
+            // and dlopen under the app's own sandbox. Results go to the log.
+            // Reports its decision either way. A gate that stays silent when it
+            // declines to run is indistinguishable from one that never executed,
+            // which cost a device run to work out.
+            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+                let raw = MadeiraConfig.get("d3d12")   /* ml1095 */
+                let val = raw ?? ""
+                if val == "1" {
+                    let dir = Bundle.main.bundlePath + "/d3d12"
+                    let dylib = dir + "/libmetalirconverter.dylib"
+                    let haveDylib = FileManager.default.fileExists(atPath: dylib)
+                    let transcript = d.appendingPathComponent("madeira-d3d12-canary.log").path
+                    logStore.log("madeira-d3d12: running the M1 canary in-app (dylib present: \(haveDylib))", level: .info)
+                    let fails = madeira_d3d12_canary_run_log(
+                        dir, dylib, nil, transcript,
+                        (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String) ?? "?")
+                    if fails == 0 {
+                        logStore.log("madeira-d3d12: M1 canary PASSED in-app (transcript: madeira-d3d12-canary.log)", level: .success)
+                    } else {
+                        logStore.log("madeira-d3d12: M1 canary FAILED (\(fails) checks)", level: .error)
+                    }
+                } else {
+                    logStore.log("madeira-d3d12: gate off (madeira.cfg d3d12 \(raw == nil ? "unset" : "= '\(val)'"))", level: .debug)
+                }
+            }
+
+            // ml821: coalesced remote messages. Documents/madeira-remote-batch.txt
+            // == "1" makes the pre-submission flush send many buffer ranges per
+            // round trip and drains autorelease pools in one call. It is OPT-IN
+            // because the measurement it is meant to improve needs a matched
+            // baseline: with the file absent the process behaves exactly as
+            // ml820 did. Round-trip COUNT is the cost being attacked -- one
+            // gameplay frame spent 369 ms of 524 ms on 2,197 serialized calls.
+            if let txt = MadeiraConfig.get("remote-batch"),
+               txt.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
+                setenv("DXMT_REMOTE_BATCH", "1", 1)
+                logStore.log("remote Metal: message coalescing ON via madeira.cfg remote-batch", level: .success)
             }
 
             // ml761: top-level API census. Documents/madeira-apicensus.txt == "1"
@@ -5829,11 +6148,10 @@ struct ContentView: View {
             // batch carries GUEST handles -- raw pointer casts, meaningless on
             // another machine -- so every handle producer and consumer has to
             // be redirected together.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-apicensus.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("apicensus") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 setenv("DXMT_API_CENSUS", v, 1)
-                logStore.log("API census: DXMT_API_CENSUS=\(v) via madeira-apicensus.txt")
+                logStore.log("API census: DXMT_API_CENSUS=\(v) via madeira.cfg apicensus")
             }
 
             // ml760: shadow-pack mode. Documents/madeira-shadow.txt == "1" packs
@@ -5843,11 +6161,10 @@ struct ContentView: View {
             // check that matters is packed counts equalling census counts: a
             // silently skipped command would otherwise surface as a subtly wrong
             // frame on another machine.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-shadow.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("shadow") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 setenv("DXMT_SHADOW_PACK", v, 1)
-                logStore.log("shadow pack: DXMT_SHADOW_PACK=\(v) via madeira-shadow.txt")
+                logStore.log("shadow pack: DXMT_SHADOW_PACK=\(v) via madeira.cfg shadow")
             }
 
             // ml758: wmtcmd census. Documents/madeira-census.txt == "1" counts
@@ -5856,11 +6173,10 @@ struct ContentView: View {
             // before serialising wmtcmd_* for the remote Metal transport --
             // building a schema for all 59 on speculation would be weeks of
             // work for commands no title may ever issue.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-census.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("census") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 setenv("DXMT_CMD_CENSUS", v, 1)
-                logStore.log("wmtcmd census: DXMT_CMD_CENSUS=\(v) via madeira-census.txt")
+                logStore.log("wmtcmd census: DXMT_CMD_CENSUS=\(v) via madeira.cfg census")
             }
 
             // ml757: FEX arena placeholder. Documents/madeira-arena.txt == "1"
@@ -5870,11 +6186,10 @@ struct ContentView: View {
             // x64 before the first window. Proven correct on the research VM
             // (8GB held, 0 of 123 guest images inside it) -- turn on only once
             // FEX consumes WINE_IOS_FEX_ARENA_BASE/SIZE instead of choosing.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-arena.txt"), encoding: .utf8) {
+            if let txt = MadeiraConfig.get("arena") {
                 let v = txt.trimmingCharacters(in: .whitespacesAndNewlines)
                 setenv("MADEIRA_FEX_ARENA", v, 1)
-                logStore.log("FEX arena placeholder: MADEIRA_FEX_ARENA=\(v) via madeira-arena.txt")
+                logStore.log("FEX arena placeholder: MADEIRA_FEX_ARENA=\(v) via madeira.cfg arena")
             }
 
             // ml748: W^X A/B probe. Documents/madeira-wxprobe.txt == "1" runs it.
@@ -5888,10 +6203,9 @@ struct ContentView: View {
             // machines can. Runs here because it needs the real container, the
             // real sandbox and a live cs_wx_enabled map -- a standalone binary
             // over SSH already answered this wrongly once.
-            if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-               let txt = try? String(contentsOf: d.appendingPathComponent("madeira-wxprobe.txt"), encoding: .utf8),
+            if let txt = MadeiraConfig.get("wxprobe"),
                txt.trimmingCharacters(in: .whitespacesAndNewlines) == "1" {
-                logStore.log("W^X probe armed via madeira-wxprobe.txt", level: .success)
+                logStore.log("W^X probe armed via madeira.cfg wxprobe", level: .success)
                 jit_wx_probe()
             }
 
@@ -6559,14 +6873,363 @@ struct TouchControl: Codable, Identifiable, Equatable {
     var regionID: String { "ctl." + id.uuidString.prefix(8) }
 }
 
+// ============================================================================
+// ml1530 — TOUCH-CONTROL PRESETS, the pure half.
+//
+// Named layouts a user can save, load, rename and delete, kept app-wide in
+// Documents/madeira-control-presets.json (beside madeira-controls.json, so a
+// device backup carries them), plus built-ins that ship in code and can be
+// loaded but never changed. A preset is what the editor edits: the controls
+// and the layout-wide size scale. The on-screen opacity is not part of it —
+// that is a per-game overlay setting (LibraryEntry), not layout.
+//
+// Loading a preset only replaces `TouchControlsModel.controls`/`sizeScale`;
+// the game's own profile then picks the layout up through the existing save
+// path (LibraryModel.saveCurrentProfile), which this does not touch.
+//
+// Foundation-only on purpose, from `ControlPreset` to `ControlPresetStore`:
+// build/host-tests/check-control-presets.py compiles this block together with
+// PadButton/ControlAction/TouchControl above it on the host.
+// ============================================================================
+
+struct ControlPreset: Codable, Identifiable, Equatable {
+    var id: String
+    var name: String
+    var controls: [TouchControl]
+    /// Optional for the reason `TouchControlsModel.Saved.sizeScale` is: a
+    /// missing key must decode, not throw.
+    var sizeScale: Double?
+}
+
+/// ml1530: the screen a built-in layout is placed on, in points, with its
+/// safe-area insets. Built-ins are laid out in points from the edges and then
+/// normalised to THIS screen, so one layout reads right on a phone and a tablet.
+struct ControlPresetScreen: Equatable {
+    var width: Double
+    var height: Double
+    var left = 0.0, right = 0.0, top = 0.0, bottom = 0.0
+
+    /// The layout is landscape-only (see `TouchControlsModel.sizeScale`), so a
+    /// portrait screen is laid out as the landscape one it rotates to: the
+    /// top/bottom insets (sensor housing, home indicator) move to the sides.
+    var landscape: ControlPresetScreen {
+        guard height > width else { return self }
+        let side = max(top, bottom)
+        return ControlPresetScreen(width: height, height: width, left: side, right: side,
+                                   top: 0, bottom: min(bottom, 21))
+    }
+
+    /// A 6.3-inch phone in landscape: what the stored copy of a built-in is
+    /// laid out for. Loading lays it out again for the real screen.
+    static let referencePhone = ControlPresetScreen(width: 874, height: 402,
+                                                    left: 59, right: 59, top: 0, bottom: 21)
+}
+
+enum ControlPresetLayout {
+    static let xboxID = "builtin.xbox"
+    static let xboxName = "Xbox controller"
+
+    /// The margins a built-in keeps from each edge, whatever the reported insets.
+    static func margins(_ s: ControlPresetScreen) -> (left: Double, right: Double, top: Double, bottom: Double) {
+        (max(s.left, 16), max(s.right, 16), max(s.top, 8), max(s.bottom, 8))
+    }
+
+    /// Where the in-game menu button sits by default (LibraryFloatingItem in
+    /// Library.swift: 48pt, at 0.92 × 0.12 of the screen, kept inside the safe
+    /// area). The right shoulder column stays clear of it, or the menu button
+    /// would take the RT/RB touches landing under it.
+    static func menuButtonRect(_ s: ControlPresetScreen) -> CGRect {
+        let x = min(max(0.92 * s.width, s.left + 32), s.width - s.right - 32)
+        let y = max(0.12 * s.height, s.top + 32)
+        return CGRect(x: CGFloat(x - 24), y: CGFloat(y - 24), width: 48, height: 48)
+    }
+
+    /// The drawn box of a control, in points — the same size
+    /// `TouchControlButton` draws: `ControlAction.controlSize` of
+    /// base × the control's scale × the layout-wide size scale.
+    static func box(_ c: TouchControl, screen s: ControlPresetScreen,
+                    base: Double = 64, sizeScale: Double = 1) -> CGRect {
+        let size = c.action.controlSize(diameter: CGFloat(base * c.scale * sizeScale))
+        return CGRect(x: CGFloat(c.nx * s.width) - size.width / 2,
+                      y: CGFloat(c.ny * s.height) - size.height / 2,
+                      width: size.width, height: size.height)
+    }
+
+    /// ml1530 — THE BUILT-IN XBOX CONTROLLER, a full XInput layout.
+    ///
+    ///   LT LB   (top-left)                          (top-right)   RT RB
+    ///   D-pad   above the left stick     A/B/X/Y diamond above the right stick
+    ///   L-stick (bottom-left)  L3   Back Start   R3  R-stick (bottom-right)
+    ///
+    /// Everything is placed in points from the edges and safe-area insets, then
+    /// normalised, so the thumbs find the same spots on a phone and a tablet.
+    /// `k` scales the whole thing up on a tall (tablet) screen, where a
+    /// phone-sized stick would be lost; the pinch clamp (0.5–3.0) still holds.
+    /// Base 64 mirrors `TouchControlsModel.baseDiameter`.
+    static func xbox(for screen: ControlPresetScreen, base: Double = 64) -> [TouchControl] {
+        let s = screen.landscape
+        let W = s.width, H = s.height
+        guard W > 0, H > 0 else { return [] }
+        let k = min(max(H / 400, 1.0), 1.3)
+        let (L, R, T, B) = margins(s)
+        var out: [TouchControl] = []
+        func add(_ a: ControlAction, _ scale: Double, _ x: Double, _ y: Double) {
+            var c = TouchControl()
+            c.action = a
+            c.scale = scale
+            c.nx = x / W
+            c.ny = y / H
+            out.append(c)
+        }
+        func size(_ a: ControlAction, _ scale: Double) -> (w: Double, h: Double) {
+            let z = a.controlSize(diameter: CGFloat(base * scale))
+            return (Double(z.width), Double(z.height))
+        }
+        let stickScale = 1.45 * k, faceScale = 0.78 * k, dpadScale = 0.8 * k
+        let shoulderScale = 0.8 * k, systemScale = 1.25 * k, clickScale = 0.9 * k
+
+        // Sticks: bottom corners, clear of the home indicator.
+        let stick = size(.gamepad(.leftStick), stickScale).w
+        let stickY = H - B - 12 * k - stick / 2
+        let lStickX = L + 76 * k, rStickX = W - R - 76 * k
+        add(.gamepad(.leftStick), stickScale, lStickX, stickY)
+        add(.gamepad(.rightStick), stickScale, rStickX, stickY)
+
+        // Shoulders: triggers on top, bumpers under them, in the top corners —
+        // the right column kept left of the in-game menu button, the left one
+        // mirrored so the two sides match.
+        let sh = size(.gamepad(.lt), shoulderScale)
+        let menu = menuButtonRect(s)
+        let rShoulderX = min(W - R - 108 * k, Double(menu.minX) - 10 - sh.w / 2)
+        let lShoulderX = max(W - rShoulderX, L + 8 + sh.w / 2)
+        let triggerY = T + 6 * k + sh.h / 2
+        let bumperY = triggerY + sh.h + 8 * k
+        add(.gamepad(.lt), shoulderScale, lShoulderX, triggerY)
+        add(.gamepad(.rt), shoulderScale, rShoulderX, triggerY)
+        add(.gamepad(.lb), shoulderScale, lShoulderX, bumperY)
+        add(.gamepad(.rb), shoulderScale, rShoulderX, bumperY)
+        let bumperBottom = bumperY + sh.h / 2
+        let stickTop = stickY - stick / 2
+
+        // D-pad: just above the left stick (not mid-screen on a tall tablet).
+        let dp = size(.gamepadDPad, dpadScale).w
+        add(.gamepadDPad, dpadScale, lStickX,
+            max(stickTop - 18 * k - dp / 2, bumperBottom + 8 * k + dp / 2))
+
+        // A/B/X/Y: a diamond just above the right stick. Diagonal neighbours
+        // sit o·√2 apart, which clears one face button's diameter.
+        let face = size(.gamepad(.a), faceScale).w
+        let o = face / 2 + 17 * k
+        let span = 2 * o + face
+        let cx = rStickX - 8 * k
+        let cy = max(stickTop - 18 * k - span / 2, bumperBottom + 8 * k + span / 2)
+        add(.gamepad(.y), faceScale, cx, cy - o)
+        add(.gamepad(.x), faceScale, cx - o, cy)
+        add(.gamepad(.b), faceScale, cx + o, cy)
+        add(.gamepad(.a), faceScale, cx, cy + o)
+
+        // Back / Start: bottom centre, between the sticks.
+        let sys = size(.gamepad(.start), systemScale)
+        let sysY = H - B - 20 * k - sys.h / 2
+        add(.gamepad(.back), systemScale, W / 2 - 40 * k, sysY)
+        add(.gamepad(.start), systemScale, W / 2 + 40 * k, sysY)
+
+        // L3 / R3: small buttons on the inner side of each stick, level with
+        // its bottom edge.
+        let click = size(.gamepad(.l3), clickScale).w
+        let clickY = stickY + stick / 2 - click / 2
+        add(.gamepad(.l3), clickScale, lStickX + stick / 2 + 14 * k + click / 2, clickY)
+        add(.gamepad(.r3), clickScale, rStickX - stick / 2 - 14 * k - click / 2, clickY)
+        return out
+    }
+}
+
+/// ml1530: the preset list — built-ins (read-only, in code) then the user's
+/// own (persisted). Pure value type; `ControlPresetsModel` owns the file.
+struct ControlPresetStore: Equatable {
+    static let builtIns: [ControlPreset] = [
+        ControlPreset(id: ControlPresetLayout.xboxID, name: ControlPresetLayout.xboxName,
+                      controls: ControlPresetLayout.xbox(for: .referencePhone), sizeScale: 1.0),
+    ]
+    static let maxNameLength = 40
+
+    private(set) var user: [ControlPreset] = []
+
+    init(user: [ControlPreset] = []) { self.user = user.filter { !Self.isBuiltIn($0.id) } }
+
+    var all: [ControlPreset] { Self.builtIns + user }
+
+    static func isBuiltIn(_ id: String) -> Bool { builtIns.contains { $0.id == id } }
+
+    func preset(_ id: String) -> ControlPreset? { all.first { $0.id == id } }
+
+    static func clean(_ name: String) -> String {
+        String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(maxNameLength))
+    }
+
+    /// Case-insensitive, whitespace-trimmed: "xbox controller " IS the built-in.
+    func named(_ name: String) -> ControlPreset? {
+        let n = Self.clean(name).lowercased()
+        guard !n.isEmpty else { return nil }
+        return all.first { $0.name.lowercased() == n }
+    }
+
+    /// A free name for a copy, e.g. "Xbox controller (custom)", "… (custom 2)".
+    func copyName(for name: String) -> String {
+        let root = Self.clean(name)
+        var candidate = Self.clean(root + " (custom)")
+        var i = 2
+        while named(candidate) != nil {
+            candidate = Self.clean(root + " (custom \(i))")
+            i += 1
+        }
+        return candidate
+    }
+
+    enum SaveResult: Equatable {
+        case created(String)      // new user preset, its id
+        case replaced(String)     // an existing user preset of that name, its id
+        case refusedBuiltIn       // the name is a built-in's: pick another
+        case refusedEmpty
+    }
+
+    /// Save a layout under a name. A built-in's name is refused (built-ins are
+    /// never overwritten); a user preset's name replaces that preset in place.
+    mutating func save(name: String, controls: [TouchControl], sizeScale: Double,
+                       newID: () -> String = { UUID().uuidString }) -> SaveResult {
+        let n = Self.clean(name)
+        guard !n.isEmpty else { return .refusedEmpty }
+        if let existing = named(n) {
+            if Self.isBuiltIn(existing.id) { return .refusedBuiltIn }
+            guard let i = user.firstIndex(where: { $0.id == existing.id }) else { return .refusedEmpty }
+            user[i].controls = controls
+            user[i].sizeScale = sizeScale
+            return .replaced(existing.id)
+        }
+        let id = newID()
+        user.append(ControlPreset(id: id, name: n, controls: controls, sizeScale: sizeScale))
+        return .created(id)
+    }
+
+    /// Overwrite a user preset's layout. false for a built-in or a missing id.
+    mutating func overwrite(id: String, controls: [TouchControl], sizeScale: Double) -> Bool {
+        guard let i = user.firstIndex(where: { $0.id == id }) else { return false }
+        user[i].controls = controls
+        user[i].sizeScale = sizeScale
+        return true
+    }
+
+    /// false for a built-in, an empty name, or a name another preset has.
+    mutating func rename(id: String, to name: String) -> Bool {
+        let n = Self.clean(name)
+        guard !n.isEmpty, let i = user.firstIndex(where: { $0.id == id }) else { return false }
+        if let other = named(n), other.id != id { return false }
+        user[i].name = n
+        return true
+    }
+
+    /// false for a built-in or a missing id.
+    mutating func delete(id: String) -> Bool {
+        guard let i = user.firstIndex(where: { $0.id == id }) else { return false }
+        user.remove(at: i)
+        return true
+    }
+
+    private struct File: Codable { var version: Int; var presets: [ControlPreset] }
+
+    /// Only the user's presets are written; built-ins live in code.
+    func encoded() throws -> Data {
+        let e = JSONEncoder()
+        e.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try e.encode(File(version: 1, presets: user))
+    }
+
+    static func decoded(_ data: Data) throws -> ControlPresetStore {
+        let f = try JSONDecoder().decode(File.self, from: data)
+        guard f.version == 1 else {
+            throw DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "preset file version \(f.version)"))
+        }
+        return ControlPresetStore(user: f.presets)
+    }
+
+    /// What loading a preset puts in the editor: its controls with FRESH ids
+    /// (a control's id is its touch region's id, and two loads of one preset
+    /// must not share them), positions inside the editor's drag clamp, and a
+    /// size scale inside the slider's range. A built-in is laid out again for
+    /// the screen it is loaded on.
+    static func layout(of p: ControlPreset, screen: ControlPresetScreen?)
+        -> (controls: [TouchControl], sizeScale: Double) {
+        var controls = p.controls
+        if p.id == ControlPresetLayout.xboxID, let screen {
+            let fitted = ControlPresetLayout.xbox(for: screen)
+            if !fitted.isEmpty { controls = fitted }
+        }
+        controls = controls.map { c in
+            var c = c
+            c.id = UUID()
+            c.nx = min(max(c.nx, 0.03), 0.97)
+            c.ny = min(max(c.ny, 0.03), 0.97)
+            c.scale = min(max(c.scale, 0.5), 3.0)
+            return c
+        }
+        return (controls, min(max(p.sizeScale ?? 1.0, 0.5), 2.0))
+    }
+}
+
 final class TouchControlsModel: ObservableObject {
     static let shared = TouchControlsModel()
     static let baseDiameter: CGFloat = 64
 
     @Published var controls: [TouchControl] = [] { didSet { save() } }
     @Published var visible = true               { didSet { save() } }
-    @Published var editing = false              // transient, never persisted
+    @Published var editing = false {            // transient, never persisted
+        didSet { if oldValue && !editing { editingEnded() } }
+    }
     @Published var selected: UUID?              // transient
+
+    /// ml1490: bumped when an edit session ends; the overlay keys the controls
+    /// on it, so every control is rebuilt and registers afresh.
+    @Published var epoch = 0
+
+    static let hudRectFix = LibraryFlags.enabled("MADEIRA_HUD_RECT_FIX")
+    private static let refreshAfterEdit = LibraryFlags.enabled("MADEIRA_CONTROLS_REFRESH")
+    private var editsLogged = 0
+
+    /// ml1490 — DEVICE REPORT: after editing, the game did not see the
+    /// on-screen controller until the controls were hidden and shown again.
+    /// That toggle rebuilds every control view (fresh region registrations)
+    /// and takes the on-screen pad to zero and back, which a game reads as
+    /// the controller being plugged in again. Ending an edit now does both,
+    /// and logs the input state it found so a log shows what was stale if
+    /// this is not enough. MADEIRA_CONTROLS_REFRESH=0 turns the refresh off.
+    private func editingEnded() {
+        let ov = ControlOverlayView.shared
+        if editsLogged < 16 {
+            editsLogged += 1
+            let library = LibraryModel.shared
+            fputs("[controls-edit] ml1490 editing ended: controls=\(controls.count) visible=\(visible) "
+                  + "pad-live=\(OnScreenPad.shared.isLive) overlay-window=\(ov.window != nil) "
+                  + "owns-input=\(LibraryController.shared.ownsInput) blocks-touch=\(library.blocksGameplayTouch) "
+                  + "refresh=\(Self.refreshAfterEdit)\n", stderr)
+        }
+        guard Self.refreshAfterEdit else { return }
+        epoch &+= 1
+        // After SwiftUI has rebuilt the controls, so the re-arm sees the new
+        // registrations.
+        DispatchQueue.main.async { OnScreenPad.shared.rearm() }
+    }
+
+    /// ml1970 — DEVICE REPORT: with touch controls on, loading the Xbox layout left
+    /// every control dead until touch controls were turned off and on again. A layout
+    /// replaced outside an edit session never got the rebuild and pad re-arm an ended
+    /// edit gets (the toggle's effect). Do the same here, once SwiftUI has laid out the
+    /// new controls. MADEIRA_CONTROLS_LAYOUT_REFRESH=0 skips it.
+    func layoutReplaced(reason: String) {
+        guard LibraryFlags.enabled("MADEIRA_CONTROLS_LAYOUT_REFRESH") else { return }
+        epoch &+= 1
+        fputs("[controls-layout] ml1970 refreshed reason=\(reason) controls=\(controls.count) visible=\(visible)\n", stderr)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { OnScreenPad.shared.rearm() }
+    }
 
     /// ml670 — ONE SIZE KNOB FOR THE WHOLE LAYOUT, 0.5…2.0.
     ///
@@ -6680,6 +7343,167 @@ final class TouchControlsModel: ObservableObject {
     }
 }
 
+/// ml1530 — the presets file and the editor's actions on it. The list itself
+/// is `ControlPresetStore` (pure, host-tested); this owns persistence, the
+/// log lines, and applying a preset to `TouchControlsModel`.
+/// MADEIRA_CONTROL_PRESETS=0 hides the presets UI (nothing else reads this).
+final class ControlPresetsModel: ObservableObject {
+    static let shared = ControlPresetsModel()
+    static let enabled = LibraryFlags.enabled("MADEIRA_CONTROL_PRESETS")
+
+    @Published private(set) var store = ControlPresetStore()
+    /// The preset last loaded or saved in this run; "Save changes" targets it.
+    /// Transient: a relaunch starts with none.
+    @Published private(set) var activeID: String?
+    /// A file that exists and cannot be read is left untouched, as the library
+    /// does with its own file: saving is refused instead of overwriting it.
+    private(set) var readOnly = false
+    private var logged = 0
+
+    private static var url: URL {
+        FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("madeira-control-presets.json")
+    }
+
+    private init() {
+        guard let d = try? Data(contentsOf: Self.url) else { return }
+        do {
+            store = try ControlPresetStore.decoded(d)
+        } catch {
+            readOnly = true
+            log("unreadable file kept, saving disabled: \(error.localizedDescription)")
+        }
+    }
+
+    var active: ControlPreset? { activeID.flatMap { store.preset($0) } }
+
+    private func log(_ line: String) {
+        guard logged < 64 else { return }
+        logged += 1
+        fputs("[control-presets] ml1530 \(line)\n", stderr)
+    }
+
+    private func log(_ verb: String, _ p: ControlPreset?, _ count: Int) {
+        log("\(verb) name=\(p?.name ?? "?") controls=\(count)")
+    }
+
+    @discardableResult private func persist() -> Bool {
+        guard !readOnly else { return false }
+        do {
+            try store.encoded().write(to: Self.url, options: .atomic)
+            return true
+        } catch {
+            log("write failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Replace the editor's layout with this preset. The game's profile takes
+    /// it from `TouchControlsModel` through the existing profile save.
+    func load(_ id: String, screen: ControlPresetScreen) {
+        guard let p = store.preset(id) else { return }
+        let m = TouchControlsModel.shared
+        let l = ControlPresetStore.layout(of: p, screen: screen)
+        m.selected = nil
+        m.controls = l.controls
+        m.sizeScale = l.sizeScale
+        activeID = p.id
+        log("loaded", p, l.controls.count)
+        m.layoutReplaced(reason: "preset")
+    }
+
+    /// ml1970: the layout a game session remembers (LibraryEntry.controlLayout).
+    func setActive(_ id: String?) { activeID = id.flatMap { store.preset($0) != nil ? $0 : nil } }
+
+    /// ml1970: the landscape screen the session's controls are laid out on.
+    static func currentScreen() -> ControlPresetScreen {
+        let window = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows).first { $0.isKeyWindow }
+        guard let window, window.bounds.width > 0 else { return ControlPresetScreen.referencePhone }
+        let i = window.safeAreaInsets
+        let s = ControlPresetScreen(width: Double(window.bounds.width), height: Double(window.bounds.height),
+                                    left: Double(i.left), right: Double(i.right), top: Double(i.top), bottom: Double(i.bottom))
+        return s.width >= s.height ? s : s.landscape
+    }
+
+    /// ml1970: "Custom Layout N", the lowest N not taken.
+    func nextCustomName() -> String {
+        var n = 1
+        while store.named("Custom Layout \(n)") != nil { n += 1 }
+        return "Custom Layout \(n)"
+    }
+
+    /// ml1970: "Create new layout": an empty user layout, made active, for the editor to fill.
+    @discardableResult func createLayout() -> String? {
+        guard !readOnly else { return nil }
+        var s = store
+        guard case .created(let id) = s.save(name: nextCustomName(), controls: [], sizeScale: 1.0) else { return nil }
+        store = s
+        persist()
+        let m = TouchControlsModel.shared
+        m.selected = nil
+        m.controls = []
+        m.sizeScale = 1.0
+        activeID = id
+        log("created", store.preset(id), 0)
+        m.layoutReplaced(reason: "new-layout")
+        return id
+    }
+
+    /// Save the editor's current layout under a name. See `ControlPresetStore.save`.
+    func save(name: String) -> ControlPresetStore.SaveResult {
+        guard !readOnly else { return .refusedEmpty }
+        let m = TouchControlsModel.shared
+        var s = store
+        let r = s.save(name: name, controls: m.controls, sizeScale: m.sizeScale)
+        switch r {
+        case .created(let id), .replaced(let id):
+            store = s
+            activeID = id
+            persist()
+            log("saved", store.preset(id), m.controls.count)
+        case .refusedBuiltIn, .refusedEmpty:
+            break
+        }
+        return r
+    }
+
+    /// "Save changes" to the active user preset. false for a built-in.
+    func saveActive() -> Bool {
+        guard !readOnly, let id = activeID else { return false }
+        let m = TouchControlsModel.shared
+        var s = store
+        guard s.overwrite(id: id, controls: m.controls, sizeScale: m.sizeScale) else { return false }
+        store = s
+        persist()
+        log("saved", store.preset(id), m.controls.count)
+        return true
+    }
+
+    func rename(_ id: String, to name: String) -> Bool {
+        guard !readOnly else { return false }
+        var s = store
+        let old = s.preset(id)?.name ?? "?"
+        guard s.rename(id: id, to: name) else { return false }
+        store = s
+        persist()
+        log("renamed name=\(old) -> \(store.preset(id)?.name ?? "?")")
+        return true
+    }
+
+    func delete(_ id: String) -> Bool {
+        guard !readOnly else { return false }
+        var s = store
+        let p = s.preset(id)
+        guard s.delete(id: id) else { return false }
+        store = s
+        if activeID == id { activeID = nil }
+        persist()
+        log("deleted", p, p?.controls.count ?? 0)
+        return true
+    }
+}
+
 /// ml — THE SIZE TO GIVE A WINDOW-LEVEL OVERLAY, root-caused from a device
 /// report: app launched STRAIGHT INTO landscape (wide normal view) had a dead
 /// toolbar joystick and a key row that scrolled instead of pressing — i.e. the
@@ -6748,7 +7572,8 @@ final class ControlsWindow: UIWindow {
         if FullscreenState.shared.active, LibraryModel.shared.current != nil {
             let library = LibraryModel.shared
             if library.menu || library.launching || library.menuButtonRect.contains(point) ||
-                (library.performance && library.performanceRect.contains(point)) {
+                (library.performance && library.performanceRect.contains(point)) ||
+                library.finishButtonRect.contains(point) {   // ml1570: setup's finish button
                 return super.hitTest(point, with: event)
             }
         }
@@ -6804,6 +7629,28 @@ final class ControlsWindow: UIWindow {
 
 enum TouchControlsHost {
     private static var window: ControlsWindow?
+
+    // ml1530: the presets editor asks for a NAME, and UIKit text input needs a
+    // key window (see LibraryKeyboard in Library.swift); this window is
+    // otherwise never made key. It is key only while that name field is up,
+    // then the window that was key before gets it back.
+    private static weak var keyBeforeTextEntry: UIWindow?
+
+    static func beginTextEntry() {
+        guard let w = window, !w.isKeyWindow else { return }
+        keyBeforeTextEntry = w.windowScene?.windows.first { $0.isKeyWindow }
+        w.makeKey()
+        fputs("[control-presets] ml1530 name field: overlay window made key (had=\(keyBeforeTextEntry != nil))\n", stderr)
+    }
+
+    static func endTextEntry() {
+        guard let w = window, w.isKeyWindow else { keyBeforeTextEntry = nil; return }
+        let back = keyBeforeTextEntry ?? w.windowScene?.windows.first {
+            !($0 is ControlsWindow) && !($0 is PassthroughWindow) && !$0.isHidden
+        }
+        keyBeforeTextEntry = nil
+        back?.makeKey()
+    }
 
     static func attach() {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
@@ -6890,6 +7737,7 @@ struct TouchControlsOverlay: View {
                             TouchControlButton(control: c, screen: geo.size)
                                 .opacity(library.current != nil && !m.editing ? library.opacity : 1)
                         }
+                        .id(m.epoch)   // ml1490: rebuilt when an edit session ends
                     }
                     if library.current != nil && !m.editing { LibraryHUD() }
                     else { topBar(in: geo) }
@@ -6981,11 +7829,26 @@ struct TouchControlsOverlay: View {
             // cluster's own clamped, persisted position (hudBaseCenter/
             // commitHudDrag below) rather than needing a second one of its
             // own. A tap exits; only the grip drags.
-            glassButton("arrow.down.right.and.arrow.up.left") {
-                if library.current != nil { m.editing = false; library.showMenu() }
-                else { fullscreenState.active = false }
+            // ml1970: while editing, a Done button ends the edit (and keeps it in the active
+            // custom layout) in place of the exit arrows; the show/hide-controls glyph from the
+            // older interface is gone from the editor. MADEIRA_CONTROLS_EDITOR_DONE=0 restores both.
+            if m.editing && Self.editorDone {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    finishEditing()
+                } label: {
+                    Text("Done").font(.system(size: 16, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 18).frame(height: 44).background(GlassShape())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Done editing controls")
+            } else {
+                glassButton("arrow.down.right.and.arrow.up.left") {
+                    if library.current != nil { m.editing = false; library.showMenu() }
+                    else { fullscreenState.active = false }
+                }
+                glassButton("gamecontroller", dim: !m.visible) { m.visible.toggle() }
             }
-            glassButton("gamecontroller", dim: !m.visible) { m.visible.toggle() }
             // ml663: landscape is where a keyboard and mouse are actually used,
             // so the escape hatch from pointer lock has to be reachable HERE —
             // by touch, which pointer lock does not affect. (Ctrl+Alt+P does the
@@ -7005,9 +7868,11 @@ struct TouchControlsOverlay: View {
                     HardwareInput.shared.togglePointerLock()
                 }
             }
-            glassButton(m.editing ? "checkmark" : "pencil") {
-                m.editing.toggle()
-                if !m.editing { m.selected = nil }
+            if !(m.editing && Self.editorDone) {
+                glassButton(m.editing ? "checkmark" : "pencil") {
+                    m.editing.toggle()
+                    if !m.editing { m.selected = nil }
+                }
             }
             if m.editing {
                 glassButton("plus") {
@@ -7019,16 +7884,34 @@ struct TouchControlsOverlay: View {
                     m.selected = c.id
                 }
                 .transition(.opacity.combined(with: .scale))
+                // ml1530: named layouts (load / save / manage), edit mode only.
+                // MADEIRA_CONTROL_PRESETS=0 hides it.
+                // ml1970: layouts are chosen in the session menu now (Controller layout).
+                if ControlPresetsModel.enabled && !Self.editorDone {
+                    ControlPresetsMenu(screen: presetScreen(in: geo))
+                        .transition(.opacity.combined(with: .scale))
+                }
             }
         }
         .padding(.top, 10)
         .animation(.easeInOut(duration: 0.22), value: m.editing)
+        // Window coords, same trick (and the same reason) as
+        // HardwareInput.hintRect above: ControlsWindow.hitTest has no access
+        // to SwiftUI layout, so the measured frame is published here for it
+        // to read.
+        // ml1490: attached BEFORE .position, as TouchControlButton's region
+        // probe is. After it, the probe measured the whole screen (.position
+        // expands to fill its parent), so the size bar found "no room below
+        // the cluster", was clamped to the top edge and sat on the edit
+        // buttons in landscape, and hitsInteractive claimed every point.
+        // MADEIRA_HUD_RECT_FIX=0 restores the old measurement.
+        .background(TouchControlsModel.hudRectFix ? GeometryReader { g -> Color in
+            let f = g.frame(in: .global)
+            DispatchQueue.main.async { m.hudClusterRect = f }
+            return Color.clear
+        } : nil)
         .position(x: center.x + hudDragState.width, y: center.y + hudDragState.height)
-        .background(GeometryReader { g -> Color in
-            // Window coords, same trick (and the same reason) as
-            // HardwareInput.hintRect above: ControlsWindow.hitTest has no
-            // access to SwiftUI layout, so the measured frame is published
-            // here for it to read.
+        .background(TouchControlsModel.hudRectFix ? nil : GeometryReader { g -> Color in
             let f = g.frame(in: .global)
             DispatchQueue.main.async { m.hudClusterRect = f }
             return Color.clear
@@ -7187,6 +8070,29 @@ struct TouchControlsOverlay: View {
         else { InputSettings.shared.hudPosLandscapeLeft = normalized }
     }
 
+    /// ml1530: the screen a built-in preset is laid out on — this overlay's
+    /// full size (it ignores the safe area, as the controls' normalised
+    /// positions do) and the insets it reports.
+    static let editorDone = LibraryFlags.enabled("MADEIRA_CONTROLS_EDITOR_DONE")
+
+    /// ml1970: Done in the editor. Edits to a custom layout are kept in that layout (a
+    /// built-in stays as shipped; the game's own profile still saves the edited copy).
+    private func finishEditing() {
+        let presets = ControlPresetsModel.shared
+        if let active = presets.active, !ControlPresetStore.isBuiltIn(active.id) { _ = presets.saveActive() }
+        m.selected = nil
+        m.editing = false
+        if library.current != nil { library.saveCurrentProfile() }
+        fputs("[controls-edit] ml1970 done layout=\(presets.active?.name ?? "-") controls=\(m.controls.count)\n", stderr)
+    }
+
+    private func presetScreen(in geo: GeometryProxy) -> ControlPresetScreen {
+        let i = geo.safeAreaInsets
+        return ControlPresetScreen(width: Double(geo.size.width), height: Double(geo.size.height),
+                                   left: Double(i.leading), right: Double(i.trailing),
+                                   top: Double(i.top), bottom: Double(i.bottom))
+    }
+
     /// Pinch anywhere scales the SELECTED control. With nothing selected it does
     /// nothing rather than guessing which one you meant.
     private var scalePinch: some Gesture {
@@ -7217,6 +8123,195 @@ struct TouchControlsOverlay: View {
                 .background(GlassShape(circle: true))
         }
         .buttonStyle(.plain)
+    }
+}
+
+/// ml1530 — the presets button in the editor's HUD cluster (edit mode only):
+/// Load ▸ (built-ins, then the user's), Save changes, Save as preset…,
+/// Manage ▸ (rename / delete the user's). Loading asks first, since it
+/// replaces the layout being edited.
+struct ControlPresetsMenu: View {
+    let screen: ControlPresetScreen
+    @ObservedObject private var presets = ControlPresetsModel.shared
+
+    private enum NamePrompt: Equatable { case saveAs, rename(String) }
+    @State private var prompt: NamePrompt?
+    @State private var promptNote = ""
+    @State private var promptRename = false        // kept past dismissal, so the title does not flip
+    @State private var nameText = ""
+    @State private var confirmLoad: ControlPreset?
+    @State private var confirmReplace: String?     // a user preset's name, from Save as
+    @State private var confirmDelete: ControlPreset?
+    @State private var notice: String?
+
+    var body: some View {
+        Menu {
+            Menu("Load") {
+                ForEach(ControlPresetStore.builtIns) { loadButton($0, icon: "gamecontroller") }
+                if !presets.store.user.isEmpty {
+                    Divider()
+                    ForEach(presets.store.user) { loadButton($0, icon: nil) }
+                }
+            }
+            if let a = presets.active {
+                Button(ControlPresetStore.isBuiltIn(a.id) ? "Save changes as new preset…"
+                                                          : "Save changes to “\(a.name)”",
+                       systemImage: "square.and.arrow.down") { saveActive(a) }
+            }
+            Button("Save as preset…", systemImage: "plus.square.on.square") {
+                askName(.saveAs, prefill: presets.active.map { presets.store.copyName(for: $0.name) } ?? "",
+                        note: "Saves the current layout and size.")
+            }
+            if !presets.store.user.isEmpty {
+                Menu("Manage") {
+                    ForEach(presets.store.user) { p in
+                        Menu(p.name) {
+                            Button("Rename…", systemImage: "pencil") {
+                                askName(.rename(p.id), prefill: p.name, note: "")
+                            }
+                            Button("Delete", systemImage: "trash", role: .destructive) { confirmDelete = p }
+                        }
+                    }
+                }
+            }
+        } label: {
+            // Same look as the cluster's glass buttons; stroke glyph only.
+            Image(systemName: "square.stack.3d.up")
+                .font(.system(size: 18, weight: .regular))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(GlassShape(circle: true))
+        }
+        .accessibilityLabel("Control presets")
+        .alert(promptRename ? "Rename preset" : "Save as preset", isPresented: shown($prompt)) {
+            TextField("Name", text: $nameText)
+                .textInputAutocapitalization(.sentences)
+            Button(promptRename ? "Rename" : "Save") { commitName() }
+            Button("Cancel", role: .cancel) { prompt = nil }
+        } message: {
+            Text(promptNote)
+        }
+        .alert("Replace your current controls with “\(confirmLoad?.name ?? "")”?",
+               isPresented: shown($confirmLoad)) {
+            Button("Replace", role: .destructive) {
+                if let p = confirmLoad { presets.load(p.id, screen: screen) }
+                confirmLoad = nil
+            }
+            Button("Cancel", role: .cancel) { confirmLoad = nil }
+        } message: {
+            Text("The layout on screen is replaced. Save it as a preset first to keep it.")
+        }
+        .alert("Replace preset “\(confirmReplace ?? "")”?", isPresented: shown($confirmReplace)) {
+            Button("Replace", role: .destructive) {
+                if let n = confirmReplace { finishSave(n) }
+                confirmReplace = nil
+            }
+            Button("Cancel", role: .cancel) { confirmReplace = nil }
+        } message: {
+            Text("It is overwritten with the current layout.")
+        }
+        .alert("Delete “\(confirmDelete?.name ?? "")”?", isPresented: shown($confirmDelete)) {
+            Button("Delete", role: .destructive) {
+                if let p = confirmDelete, !presets.delete(p.id) { later { notice = "That preset could not be deleted." } }
+                confirmDelete = nil
+            }
+            Button("Cancel", role: .cancel) { confirmDelete = nil }
+        }
+        .alert(notice ?? "", isPresented: shown($notice)) {
+            Button("OK", role: .cancel) { notice = nil }
+        }
+        // The overlay window is key only while a name field is up.
+        .onChange(of: prompt) { _, p in if p == nil { TouchControlsHost.endTextEntry() } }
+        .onDisappear { TouchControlsHost.endTextEntry() }
+    }
+
+    private func loadButton(_ p: ControlPreset, icon: String?) -> some View {
+        Button {
+            confirmLoad = p
+        } label: {
+            if presets.activeID == p.id { Label(p.name, systemImage: "checkmark") }
+            else if let icon { Label(p.name, systemImage: icon) }
+            else { Text(p.name) }
+        }
+    }
+
+    private func shown<T>(_ b: Binding<T?>) -> Binding<Bool> {
+        Binding(get: { b.wrappedValue != nil }, set: { if !$0 { b.wrappedValue = nil } })
+    }
+
+    /// A second alert raised from the first one's button waits for that one to
+    /// finish dismissing, or SwiftUI drops it.
+    private func later(_ f: @escaping () -> Void) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: f)
+    }
+
+    private func askName(_ p: NamePrompt, prefill: String, note: String) {
+        nameText = prefill
+        promptNote = note
+        promptRename = p != .saveAs
+        TouchControlsHost.beginTextEntry()
+        prompt = p
+    }
+
+    private func commitName() {
+        let current = prompt
+        let name = ControlPresetStore.clean(nameText)
+        prompt = nil
+        switch current {
+        case .saveAs:
+            if name.isEmpty {
+                later { askName(.saveAs, prefill: "", note: "Enter a name for the preset.") }
+            } else if let existing = presets.store.named(name) {
+                if ControlPresetStore.isBuiltIn(existing.id) {
+                    // Built-ins are never overwritten: ask again, with a free name.
+                    later {
+                        askName(.saveAs, prefill: presets.store.copyName(for: existing.name),
+                                note: "“\(existing.name)” is built in and can't be changed. Choose a new name.")
+                    }
+                } else {
+                    later { confirmReplace = existing.name }
+                }
+            } else {
+                finishSave(name)
+            }
+        case .rename(let id):
+            if !presets.rename(id, to: name) {
+                later { notice = name.isEmpty ? "A preset needs a name." : "“\(name)” is already used." }
+            }
+        case nil:
+            break
+        }
+    }
+
+    private func finishSave(_ name: String) {
+        switch presets.save(name: name) {
+        case .created, .replaced:
+            break
+        case .refusedBuiltIn:
+            later {
+                askName(.saveAs, prefill: presets.store.copyName(for: name),
+                        note: "Built-in presets can't be changed. Choose a new name.")
+            }
+        case .refusedEmpty:
+            later {
+                notice = presets.readOnly
+                    ? "The presets file could not be read, so saving is off to keep it intact."
+                    : "A preset needs a name."
+            }
+        }
+    }
+
+    private func saveActive(_ a: ControlPreset) {
+        if ControlPresetStore.isBuiltIn(a.id) {
+            askName(.saveAs, prefill: presets.store.copyName(for: a.name),
+                    note: "“\(a.name)” is built in and can't be changed. Save your layout under a new name.")
+        } else if !presets.saveActive() {
+            later {
+                notice = presets.readOnly
+                    ? "The presets file could not be read, so saving is off to keep it intact."
+                    : "That preset could not be saved."
+            }
+        }
     }
 }
 
@@ -7461,7 +8556,10 @@ struct TouchControlButton: View {
         .overlay(outline)
         // A stick must not shrink under the thumb; only round buttons do that.
         .scaleEffect(!isStick && isDown ? 0.92 : 1.0)
-        .animation(.easeOut(duration: 0.08), value: isDown)
+        // ml890: no press animation. Pressing the on-screen Enter key killed the
+        // whole process with a SwiftUI trap on com.apple.SwiftUI.AsyncRenderer
+        // (DisplayList.ViewUpdater.ViewCache.commitAsyncValues) while this
+        // glass control animated its press; the state change now applies at once.
         // ml646: the springy knob, same curve as the portrait pad overlay.
         .animation(.spring(response: 0.22, dampingFraction: 0.58), value: face.dir)
         .overlay(alignment: .topTrailing) {
@@ -7517,6 +8615,7 @@ struct MappingPanel: View {
     /// this object.
     @ObservedObject private var input = InputSettings.shared
     @State private var tab = 0                    // 0 keyboard, 1 controller
+    @State private var bindingOpen = false        // ml1500: physical-binding rows folded
 
 
     var body: some View {
@@ -7529,6 +8628,8 @@ struct MappingPanel: View {
             ScrollView {
                 (tab == 0 ? AnyView(keyboardTab) : AnyView(controllerTab))
                     .padding(10)
+                    // ml1490: lets the last row scroll clear of the panel's edge.
+                    .padding(.bottom, Self.bottomMargin ? 16 : 0)
             }
         }
         .frame(width: layout.size.width, height: layout.size.height)
@@ -7561,13 +8662,19 @@ struct MappingPanel: View {
         let box = control.action.controlSize(diameter: TouchControlsModel.diameter(control))
         let r  = max(box.width, box.height) / 2
         let gap: CGFloat = 14, edge: CGFloat = 8
+        // ml1490: the bottom edge is the home indicator's. A panel flush with
+        // it put its last chip rows (System: Start/Back are the last action
+        // row) where iOS keeps the touch for its own gesture, and on device
+        // those two chips could not be selected. MADEIRA_PANEL_BOTTOM_MARGIN=0
+        // restores the plain edge.
+        let bottom: CGFloat = Self.bottomMargin ? 30 : edge
 
         for size in [CGSize(width: 340, height: 236),
                      CGSize(width: 300, height: 196),
                      CGSize(width: 264, height: 164)] {
             let clampX = min(max(cx, size.width  / 2 + edge), screen.width  - size.width  / 2 - edge)
-            let clampY = min(max(cy, size.height / 2 + edge), screen.height - size.height / 2 - edge)
-            if cy + r + gap + size.height <= screen.height - edge {
+            let clampY = min(max(cy, size.height / 2 + edge), screen.height - size.height / 2 - bottom)
+            if cy + r + gap + size.height <= screen.height - bottom {
                 return Placement(center: CGPoint(x: clampX, y: cy + r + gap + size.height / 2), size: size)
             }
             if cy - r - gap - size.height >= edge {
@@ -7586,9 +8693,20 @@ struct MappingPanel: View {
         return Placement(
             center: CGPoint(x: cx < screen.width  / 2 ? screen.width  - size.width  / 2 - edge
                                                       : size.width  / 2 + edge,
-                            y: cy < screen.height / 2 ? screen.height - size.height / 2 - edge
+                            y: cy < screen.height / 2 ? screen.height - size.height / 2 - bottom
                                                       : size.height / 2 + edge),
             size: size)
+    }
+
+    private static let bottomMargin = LibraryFlags.enabled("MADEIRA_PANEL_BOTTOM_MARGIN")
+    private static var chipLogs = 0
+    /// ml1490: one line per chip tap (first 48), with what the control was and
+    /// became, so a chip that "does nothing" shows whether the tap arrived.
+    static func logChip(_ kind: String, _ control: TouchControl, _ to: String) {
+        guard chipLogs < 48 else { return }
+        chipLogs += 1
+        fputs("[controls-edit] ml1490 \(kind) chip control=\(control.regionID) action=\(control.action.label) "
+              + "binding=\(control.padBinding?.label ?? "none") -> \(to)\n", stderr)
     }
 
     private func tabButton(_ i: Int, _ icon: String) -> some View {
@@ -7678,7 +8796,7 @@ struct MappingPanel: View {
     // Both at once is legal and occasionally useful; neither implies the other.
     private var controllerTab: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Make this control a virtual controller button. A game that "
+            Text("What this control sends: a virtual controller button. A game that "
                  + "reads XInput sees it as controller 1, with or without a "
                  + "physical pad plugged in.")
                 .font(.system(size: 11))
@@ -7697,17 +8815,24 @@ struct MappingPanel: View {
 
             Rectangle().fill(.white.opacity(0.15)).frame(height: 1).padding(.vertical, 2)
 
-            Text("Also press this control with a physical controller button. "
-                 + "Games that read XInput get the controller either way.")
-                .font(.system(size: 11))
-                .foregroundStyle(.white.opacity(0.55))
-                .fixedSize(horizontal: false, vertical: true)
-            padSection("Face", [.a, .b, .x, .y])
-            padSection("Bumpers & triggers", [.lb, .rb, .lt, .rt])
-            padSection("D-pad", [.dpadUp, .dpadDown, .dpadLeft, .dpadRight])
-            padSection("Sticks & clicks", [.leftStick, .rightStick, .l3, .r3])
-            padSection("System", [.start, .back])
-            padSection("", [nil])            // the "None" chip, on its own row
+            // ml1490 device report: "I can select Start/Back but the button does not
+            // become Start/Back". The rows below repeat the same labels but only choose
+            // which PHYSICAL button also presses this control; the rows above choose
+            // what it sends. They are now folded away under a title that says so.
+            // MADEIRA_PANEL_BINDING_COLLAPSED=0 shows them inline as before.
+            if Self.bindingCollapsed {
+                DisclosureGroup(isExpanded: $bindingOpen) {
+                    VStack(alignment: .leading, spacing: 12) { bindingSections }.padding(.top, 8)
+                } label: {
+                    Text(control.padBinding.map { "Physical button that also presses it: \($0.label)" }
+                         ?? "Physical button that also presses it (optional)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .tint(.white)
+            } else {
+                bindingSections
+            }
             Text("A stick binding wants a stick control: L-stick steers a WASD "
                  + "or arrows control, R-stick drives mouse-look. With nothing "
                  + "bound at all, A/B/X/Y and the bumpers fall to the first "
@@ -7743,6 +8868,23 @@ struct MappingPanel: View {
         }
     }
 
+    private static let bindingCollapsed = LibraryFlags.enabled("MADEIRA_PANEL_BINDING_COLLAPSED")
+
+    /// The physical-button binding rows (ml1500: folded under a disclosure).
+    @ViewBuilder private var bindingSections: some View {
+        Text("A physical controller button that also presses this control. This does not "
+             + "change what the control sends; that is chosen above.")
+            .font(.system(size: 11))
+            .foregroundStyle(.white.opacity(0.55))
+            .fixedSize(horizontal: false, vertical: true)
+        padSection("Face", [.a, .b, .x, .y])
+        padSection("Bumpers & triggers", [.lb, .rb, .lt, .rt])
+        padSection("D-pad", [.dpadUp, .dpadDown, .dpadLeft, .dpadRight])
+        padSection("Sticks & clicks", [.leftStick, .rightStick, .l3, .r3])
+        padSection("System", [.start, .back])
+        padSection("", [nil])            // the "None" chip, on its own row
+    }
+
     /// One row of pad-binding chips. `nil` is the unbind chip.
     private func padSection(_ title: String, _ items: [PadButton?]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -7763,6 +8905,7 @@ struct MappingPanel: View {
         let on = control.padBinding == button
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            MappingPanel.logChip("binding", control, button?.label ?? "none")
             guard let i = m.index(of: control.id) else { return }
             // ONE control per button. Binding B to a control that already has
             // A silently leaves A unbound would be surprising; binding a button
@@ -7810,6 +8953,7 @@ struct MappingPanel: View {
         let on = control.action == action
         return Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            MappingPanel.logChip("action", control, action.label)
             if let i = m.index(of: control.id) { m.controls[i].action = action }
         } label: {
             Text(label)

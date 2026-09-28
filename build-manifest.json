@@ -1,0 +1,78 @@
+{
+  "status": "blocked_no_ipa",
+  "source_commit": "1550c82114b6a94bd4157633c16fec9ac7cd1ad8",
+  "source_branch": "integration/upstream-0926",
+  "submodule_commits": {
+    "research/dxmt": "550735c32c1a2faa68fa4fe504ac827e0f341831",
+    "FEX/External/xxhash": "e626a72bc2321cd320e953a0ccf1584cad60f363",
+    "FEX/External/range-v3/doc/gh-pages": "2dae74bb693e42d850fb0adcc9045c5b71fbdeae",
+    "FEX/External/Vulkan-Headers": "450bd2232225d6c7728a4108055ac2e37cef6475",
+    "FEX/External/rpmalloc": "42fe7b54ac0c5c66a863207ea3331792c42d0218",
+    "FEX/External/zydis": "9bfadd6a55fc92dbd37fa3ba089bf8b36622df4f",
+    "research/dxmt/external/nvapi": "d08488fcc82eef313b0464db37d2955709691e94",
+    "research/dxmt/include/native/directx": "9df86f2341616ef1888ae59919feaa6d4fad693d",
+    "wine": "65fab17629dd768de44711082c7cfa5e199278b1",
+    "FEX/External/drm-headers": "3e49836995c1dcb3df709440ad2f270b569c6a5f",
+    "FEX/External/fex-gvisor-tests-bins": "71349ae6d14ac2e3e792730e240aecd8076cee6c",
+    "FEX/External/Catch2": "b3fb4b9feafcd8d91c5cb510a4775143fdbef02f",
+    "FEX/External/tracy": "650c98ece70da9e155e7ba1c2b3ee16004aae118",
+    "FEX": "7b528d8a57cb12b794c589dd7e42fff813fc9abd",
+    "FEX/External/jemalloc_glibc": "8436195ad5e1bc347d9b39743af3d29abee59f06",
+    "FEX/External/vixl": "5f418449c48f6ca3ad37c47ec632f17a561c0580",
+    "FEX/External/range-v3": "ca1388fb9da8e69314dda222dc7b139ca84e092f",
+    "FEX/External/fex-gcc-target-tests-bins": "442678a134e2d25e759c430cca32e06e9e142f1f",
+    "FEX/External/zydis/dependencies/zycore": "75a36c45ae1ad382b0f4e0ede0af84c11ee69928",
+    "FEX/External/unordered_dense": "3234af2c03549bc85656bfd3a86993bf1cd8aef1",
+    "FEX/Source/Common/cpp-optparse": "9f94388a339fcbb0bc95c17768eb786c85988f6e",
+    "FEX/External/fex-posixtest-bins": "9ae29638f8000c1603f16385ed1cf6c4c23ee414",
+    "FEX/External/fmt": "407c905e45ad75fc29bf0f9bb7c5c2fd3475976f"
+  },
+  "xcode_version": "Xcode 16.4 (16F6)",
+  "macos": "15.7.9",
+  "iphoneos_sdk": "18.5",
+  "file_count": null,
+  "ipa_size_bytes": null,
+  "ipa_sha256": null,
+  "failure": "No complete IPA. The previous private-repository macOS jobs were blocked by GitHub billing. The public destination workflow will stop at readiness until the twelve user-supplied Microsoft runtime DLLs are available; project policy bars publishing them in a public IPA artifact.",
+  "workflow_run": "https://github.com/CheatoOfficial/GTASanAndreas3DS/actions/runs/36432537267",
+  "requested_commit": "25f36e1cec7e3b1f9ee9072f90aa860f4829ec7e",
+  "destination_repository": "CheatoOfficial/Madeira",
+  "destination_main_commit": null,
+  "last_executed_macos_build_commit": "670eb5e6753bec7cf2bc20cf0bd278c396be9f1e",
+  "workflow": "https://github.com/CheatoOfficial/GTASanAndreas3DS/actions/workflows/ios-build.yml",
+  "latest_workflow_run": "https://github.com/CheatoOfficial/GTASanAndreas3DS/actions/runs/36432537267",
+  "last_executed_build_run": "https://github.com/CheatoOfficial/GTASanAndreas3DS/actions/runs/36429453349",
+  "toolchain": {
+    "sha256": "52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3",
+    "name": "llvm-mingw",
+    "state": "pinned in workflow; not yet executed because GitHub did not allocate a runner",
+    "version": "20260922",
+    "archive_sha256_verified": true,
+    "arm64ec_cxx_aliases_inspected_locally": true,
+    "macos_link_verified": false
+  },
+  "first_unresolved_build_error": "ARM64EC FEX DLL link failed under LLVM-MinGW 20260616 / Clang 22.1.8 with undefined __gxx_personality_seh0 (EC symbol) and std::__1 C++ runtime EC symbols; see run 36429453349 evidence.",
+  "external_prerequisite": "The build requires these user-supplied, unmodified Microsoft files from the official VC_redist.x64.exe: app/Madeira/x86_64-vcruntime/concrt140.dll, msvcp140.dll, msvcp140_1.dll, msvcp140_2.dll, msvcp140_atomic_wait.dll, msvcp140_codecvt_ids.dll, vcamp140.dll, vccorlib140.dll, vcomp140.dll, vcruntime140.dll, vcruntime140_1.dll, and vcruntime140_threads.dll. Project policy bars publishing them in the requested public IPA artifact.",
+  "runtime_blocker": "GTA V is unverified on physical iPhone; current Madeira does not support Rockstar Games Launcher/Social Club, normally required by retail GTA V.",
+  "runtime_distribution_policy": "tools/fetch-vcruntime.md says the Microsoft-authored VC++ DLLs are not distributable under the project license and must be supplied by the user; they are excluded from the public commit and artifact.",
+  "build_attempts": [
+    {
+      "commit": "670eb5e6753bec7cf2bc20cf0bd278c396be9f1e",
+      "result": "failed at ARM64EC FEX linker",
+      "xcode_started": false,
+      "run": 36429453349
+    },
+    {
+      "commit": "b8a439b50b8e6e9ae0fcae2749c32752d5c46dcf",
+      "result": "runner not allocated: GitHub billing/spending limit",
+      "xcode_started": false,
+      "run": 36432170346
+    },
+    {
+      "commit": "25969906dae686ec6e206bff16a381b6ffe4052a",
+      "result": "manual retry failed before runner allocation: GitHub billing/spending limit",
+      "xcode_started": false,
+      "run": 36432537267
+    }
+  ]
+}

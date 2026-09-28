@@ -1,0 +1,12 @@
+MISSING FEX/build-ios/FEXCore/Source/libFEXCore.a
+MISSING FEX/build-ios/FEXCore/Source/libFEXCore_Base.a
+MISSING FEX/build-ios/FEXCore/Source/libJemallocLibs.a
+MISSING FEX/build-ios/External/fmt/libfmt.a
+MISSING FEX/build-ios/External/cephes/libcephes_128bit.a
+MISSING FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a
+MISSING FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a
+MISSING app/Madeira/libntdll_unix.a
+MISSING app/Madeira/libwineserver.a
+MISSING app/Madeira/libwin32u_unix.a
+MISSING app/Madeira/libdxmt_combined.a
+missing_count=11

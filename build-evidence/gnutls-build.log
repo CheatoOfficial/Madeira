@@ -1,0 +1,19 @@
+=== extracting gmp-6.3.0 ===
+=== configuring GMP ===
+=== building GMP ===
+GMP ok
+=== extracting nettle-3.10.1 ===
+=== configuring nettle ===
+=== building nettle ===
+nettle ok
+=== extracting gnutls-3.8.9 ===
+=== configuring GnuTLS ===
+=== building GnuTLS ===
+GnuTLS ok
+
+=== static libs in /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/toolchains/gnutls-ios/lib ===
+-rw-r--r--  1 runner  staff   910216 Sep 28 13:40 /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/toolchains/gnutls-ios/lib/libgmp.a
+-rw-r--r--  1 runner  staff  4418728 Sep 28 13:42 /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/toolchains/gnutls-ios/lib/libgnutls.a
+-rw-r--r--  1 runner  staff  1145896 Sep 28 13:40 /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/toolchains/gnutls-ios/lib/libhogweed.a
+-rw-r--r--  1 runner  staff  1590872 Sep 28 13:40 /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/toolchains/gnutls-ios/lib/libnettle.a
+Non-fat file: /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/toolchains/gnutls-ios/lib/libgnutls.a is architecture: arm64

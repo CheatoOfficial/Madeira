@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <dirent.h>
+#include "../../build/madeira_cfg.h"   /* ml1095: one config file */
 #include <sys/stat.h>
 #include <limits.h>
 #include <string.h>
@@ -436,6 +437,82 @@ extern void wine_log_set_file(const char *path);
 
 static pthread_t g_wine_thread;
 static int g_wine_running = 0;
+// ml1850: publish status and validity together; guest exits run off-main.
+// Only the known host's numeric status is retained, never arbitrary names.
+static uint64_t g_dock_exit = 0;
+// ml2000: the last program that ended with an NTSTATUS error (0xC...) in this
+// session, so the library can say the game stopped instead of just returning.
+// Numeric status only. Launcher/helper images are not programs the user ran.
+// MADEIRA_EXIT_REPORT=0 turns the record off.
+static uint64_t g_crash_exit = 0;
+// ml2015: dockhost.exe exits to skip before the host's own (the install batch's
+// --start-services step runs the same image and exits normally first).
+static int g_dock_exit_skip = 0;
+void wine_dock_exit_reset(void) {
+    __atomic_store_n(&g_dock_exit, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_crash_exit, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_dock_exit_skip, 0, __ATOMIC_RELEASE);
+}
+void wine_dock_exit_skip_next(void) {
+    __atomic_store_n(&g_dock_exit_skip, 1, __ATOMIC_RELEASE);
+}
+static int madeira_exit_is_helper(const char *image) {
+    static const char *const helpers[] = { "dockhost.exe", "steam.exe", "steamwebhelper.exe",
+        "steamservice.exe", "steamerrorreporter.exe", "steamerrorreporter64.exe", "services.exe",
+        "winedevice.exe", "explorer.exe", "plugplay.exe", "rpcss.exe", "svchost.exe", "conhost.exe",
+        "cmd.exe", "rundll32.exe", "wineboot.exe", "start.exe", "tabtip.exe", "crashpad_handler.exe" };
+    for (size_t i = 0; i < sizeof(helpers) / sizeof(helpers[0]); i++)
+        if (!strcasecmp(image, helpers[i])) return 1;
+    return 0;
+}
+int wine_crash_exit_status(uint32_t *status) {
+    uint64_t value = __atomic_load_n(&g_crash_exit, __ATOMIC_ACQUIRE);
+    if (!(value >> 32)) return 0;
+    if (status) *status = (uint32_t)value;
+    return 1;
+}
+// ml2000: programs (not launcher/helper images) started and still running in
+// this session. A Dock session's desktop outlives its game; the library ends
+// the session once every program it saw has exited. Counters only.
+static int g_programs_started = 0, g_programs_live = 0;
+void wine_process_did_start(const char *image) {
+    if (!image || madeira_exit_is_helper(image)) return;
+    __atomic_add_fetch(&g_programs_started, 1, __ATOMIC_ACQ_REL);
+    __atomic_add_fetch(&g_programs_live, 1, __ATOMIC_ACQ_REL);
+}
+int wine_programs_started(void) { return __atomic_load_n(&g_programs_started, __ATOMIC_ACQUIRE); }
+int wine_programs_live(void) { return __atomic_load_n(&g_programs_live, __ATOMIC_ACQUIRE); }
+void wine_programs_reset(void) {
+    __atomic_store_n(&g_programs_started, 0, __ATOMIC_RELEASE);
+    __atomic_store_n(&g_programs_live, 0, __ATOMIC_RELEASE);
+}
+void wine_process_did_exit(const char *image, int status) {
+    if (image && !madeira_exit_is_helper(image)) {
+        int live = __atomic_load_n(&g_programs_live, __ATOMIC_ACQUIRE);
+        while (live > 0 && !__atomic_compare_exchange_n(&g_programs_live, &live, live - 1, 0,
+                                                        __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {}
+    }
+    if (image && (uint32_t)status >= 0xC0000000u && !madeira_exit_is_helper(image)) {
+        const char *off = getenv("MADEIRA_EXIT_REPORT");
+        if (!off || off[0] != '0')
+            __atomic_store_n(&g_crash_exit, (UINT64_C(1) << 32) | (uint32_t)status, __ATOMIC_RELEASE);
+    }
+    if (!image || strcasecmp(image, "dockhost.exe")) return;
+    int skip = 1;
+    if (__atomic_compare_exchange_n(&g_dock_exit_skip, &skip, 0, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        fprintf(stderr, "[dock-status] ml2015 skipped the install batch's service-manager step exit status=%d\n", status);
+        return;
+    }
+    uint64_t expected = 0;
+    __atomic_compare_exchange_n(&g_dock_exit, &expected,
+        (UINT64_C(1) << 32) | (uint32_t)status, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
+}
+int wine_dock_exit_status(int *status) {
+    uint64_t value = __atomic_load_n(&g_dock_exit, __ATOMIC_ACQUIRE);
+    if (!(value >> 32)) return 0;
+    if (status) *status = (int32_t)(uint32_t)value;
+    return 1;
+}
 static char *g_prefix_path = NULL;
 
 /***********************************************************************
@@ -597,6 +674,112 @@ static uint16_t madeira_pe_machine(const char *unix_path) {
 #define MADEIRA_IMAGE_FILE_MACHINE_AMD64 0x8664
 #define MADEIRA_IMAGE_FILE_MACHINE_ARM64 0xaa64
 
+/* ml1490: the Steam identity (SteamAppPath / SteamAppId / SteamGameId) belongs to
+ * the launch, not to the app. It used to be one title's hard-coded values
+ * published to every guest, so any other Steam game started directly saw a
+ * foreign app ID (device log 188: a Source title started with another game's ID
+ * and exited with status 1 inside two seconds).
+ *
+ * Now, every launch starts from none of the three:
+ *  - a desktop launch (MADEIRA_DESKTOP=1, which is also how the Windows Steam
+ *    client is started) publishes nothing; the Steam client sets them for the
+ *    games it starts;
+ *  - a direct launch of a full path gets SteamAppPath = the executable's
+ *    folder, and an app ID from MADEIRA_STEAM_APPID (the library's store
+ *    identity) or else the game's own steam_appid.txt; no ID if neither exists.
+ * MADEIRA_STEAM_ENV=0 publishes nothing at all. [steam-env] logs the choice. */
+static void madeira_publish_steam_identity(void) {
+    unsetenv("SteamAppPath");
+    unsetenv("SteamGameId");
+    unsetenv("SteamAppId");
+    const char *sw = getenv("MADEIRA_STEAM_ENV");
+    const char *exe = getenv("MADEIRA_EXE");
+    const char *desktop = getenv("MADEIRA_DESKTOP");
+    if (sw && sw[0] == '0') {
+        dprintf(STDERR_FILENO, "[steam-env] ml1490 off (MADEIRA_STEAM_ENV=0): nothing published\n");
+        return;
+    }
+    if ((desktop && desktop[0] == '1') || !exe || strlen(exe) < 4 || exe[1] != ':' || !strchr(exe, '\\')) {
+        dprintf(STDERR_FILENO, "[steam-env] ml1490 %s launch: nothing published\n",
+                (desktop && desktop[0] == '1') ? "desktop" : "non-path");
+        return;
+    }
+    char dir[1024];
+    if (snprintf(dir, sizeof(dir), "%s", exe) >= (int)sizeof(dir)) return;
+    char *slash = strrchr(dir, '\\');
+    if (!slash || slash - dir < 2) return;
+    *slash = 0;
+    if (dir[2] == 0) { dir[2] = '\\'; dir[3] = 0; }   /* "C:" -> "C:\" */
+    setenv("SteamAppPath", dir, 1);
+
+    char id[16] = "";
+    const char *source = "none";
+    const char *given = getenv("MADEIRA_STEAM_APPID");
+    if (given && *given && strspn(given, "0123456789") == strlen(given) && strlen(given) < sizeof(id)) {
+        snprintf(id, sizeof(id), "%s", given);
+        source = "library";
+    } else if (g_prefix_path && strlen(dir) > 3) {
+        char unix_path[1200];
+        char rel[1024];
+        snprintf(rel, sizeof(rel), "%s", dir + 3);
+        for (char *p = rel; *p; p++) if (*p == '\\') *p = '/';
+        snprintf(unix_path, sizeof(unix_path), "%s/drive_c/%s/steam_appid.txt", g_prefix_path, rel);
+        FILE *f = fopen(unix_path, "r");
+        if (f) {
+            char line[32] = "";
+            if (fgets(line, sizeof(line), f)) {
+                size_t n = strspn(line, "0123456789");
+                if (n > 0 && n < sizeof(id)) {
+                    memcpy(id, line, n);
+                    id[n] = 0;
+                    source = "steam_appid.txt";
+                }
+            }
+            fclose(f);
+        }
+    }
+    if (id[0]) {
+        setenv("SteamAppId", id, 1);
+        setenv("SteamGameId", id, 1);
+    }
+    dprintf(STDERR_FILENO, "[steam-env] ml1490 direct launch: SteamAppPath=%s app-id=%s (%s)\n",
+            dir, id[0] ? id : "-", source);
+}
+
+/* ml2013: export MADEIRA_DOCS_DIR before main(), while HOME is still the app
+ * container. The in-app wineserver thread sets HOME to the Wine prefix before it
+ * creates its first object, and madsync reads madeira.cfg inproc-sync right there
+ * (then keeps the answer for the whole app run); with MADEIRA_DOCS_DIR exported only
+ * when the guest starts, that read looked in Documents/wine/Documents and missed the
+ * Settings choice. Kill switch: MADEIRA_CFG_EARLY_DOCS=0 in the process environment
+ * or env.MADEIRA_CFG_EARLY_DOCS = 0 in madeira.cfg. Pure C, host-tested
+ * (build/host-tests/check-sync-engine-cfg.py). */
+static const char *g_madeira_docs_early = "not-run";
+static int madeira_cfg_off_word(const char *v)
+{
+    return v && (!strcmp(v, "0") || !strcmp(v, "off") || !strcmp(v, "no"));
+}
+static const char *madeira_docs_dir_early(void)
+{
+    char docs[1024], v[16];
+    const char *home = getenv("HOME"), *have = getenv("MADEIRA_DOCS_DIR");
+    if (madeira_cfg_off_word(getenv("MADEIRA_CFG_EARLY_DOCS"))) return "off-env";
+    if (have && *have) return "already-set";
+    if (!home || !*home || strlen(home) + 11 >= sizeof(docs)) return "no-home";
+    snprintf(docs, sizeof(docs), "%s/Documents", home);
+    setenv("MADEIRA_DOCS_DIR", docs, 0);
+    if (madeira_cfg_get("env.MADEIRA_CFG_EARLY_DOCS", v, sizeof(v)) && madeira_cfg_off_word(v)) {
+        unsetenv("MADEIRA_DOCS_DIR");
+        setenv("MADEIRA_CFG_EARLY_DOCS", "0", 1);   /* also turns off madeira_cfg.h's container fallback */
+        return "off-cfg";
+    }
+    return "set";
+}
+__attribute__((constructor)) static void madeira_docs_dir_ctor(void)
+{
+    g_madeira_docs_early = madeira_docs_dir_early();
+}
+
 static void wine_process_finished(void *arg) {
     /* Also runs when SIGQUIT makes the main guest thread call pthread_exit. */
     wineserver_finish_session();
@@ -755,26 +938,11 @@ static void *wine_process_thread(void *arg) {
          * is the pure branch-feeder) or a writer-side fix. Healer stays
          * opt-in-off. */
 
-        /* Steam game vars. One title reads SteamAppPath as its asset base path and
-         * queries it dozens of times during init, so it must be present before that
-         * title starts.
-         *
-         * KNOWN DEFECT, deliberately left in place for now: this publishes ONE title's
-         * identity to EVERY guest, with overwrite=1. A different title that links a Steam
-         * wrapper therefore sees the wrong app ID. Removing it outright was tested and is
-         * NOT the fix -- it regresses the title that needs the path, and it did not change
-         * the behaviour of the title that was mis-identified, so the mismatch is real but
-         * was not the failure being chased.
-         *
-         * The durable design belongs in the title-launch layer: publish nothing by
-         * default, take the ID from explicit title metadata or the game's own
-         * steam_appid.txt, set SteamAppPath to that game's directory, and give each child
-         * its own environment rather than mutating one process-global set shared by every
-         * pseudo-process. This path usually launches explorer.exe and cannot know which
-         * title the desktop will start later, so a conditional here cannot work. */
-        setenv("SteamAppPath", "C:\\Program Files\\Thumper", 1);
-        setenv("SteamGameId", "356400", 1);
-        setenv("SteamAppId",  "356400", 1);
+        /* Steam game vars. Some titles read SteamAppPath as their asset base path
+         * during init, so it must be present before the title starts. ml1490
+         * replaced the single hard-coded identity that used to be published here
+         * with a per-launch one; see madeira_publish_steam_identity. */
+        madeira_publish_steam_identity();
 
         /* iOS-Madeira 2026-07-02: publish the TRUE JIT-pool RX->RW offset to
          * xtajit64.dll (its own FEXCore copy reads this via getenv in
@@ -824,6 +992,73 @@ static void *wine_process_thread(void *arg) {
             LOG("Wine log file: %{public}s", logPath.UTF8String);
             /* Expose the app Documents dir to Wine code (e.g. for fex-jit-dump.bin) */
             setenv("MADEIRA_DOCS_DIR", docs.UTF8String, 1);
+            dprintf(STDERR_FILENO, "[config-dir] ml2013 early MADEIRA_DOCS_DIR=%s; native madeira.cfg readers that run "
+                    "before this point (wineserver start: madsync inproc-sync) use it (MADEIRA_CFG_EARLY_DOCS=0 disables)\n",
+                    g_madeira_docs_early);
+
+            /* ml1076: file-backed memory canary (Astra's memory-backing-canary.c,
+             * run in-app on the phone, gated by Documents/madeira-swap-canary.txt).
+             * Question: do dirty pages of a MAP_SHARED mapping of a private temp file
+             * stay OUT of phys_footprint on iOS the way they do on macOS? If yes, a
+             * file-backed tier for large guest commits is a real capacity lever. */
+            if (madeira_cfg_bool("swap-canary", 0)) {   /* ml1095: madeira.cfg swap-canary = 1 */
+                extern void madeira_memory_canary(const char *tmpdir);
+                madeira_memory_canary(NSTemporaryDirectory().UTF8String);
+            }
+
+            /* ml1077: file-backed guest data tier. Documents/madeira-swap-mb.txt = cap
+             * in MB; the sparse backing file lives in tmp with NO file protection so
+             * the mapping survives the screen locking. See virtual_ios.c ml1077. */
+            {
+                long capMB = (long)madeira_cfg_int("swap-mb", 0);   /* ml1095: madeira.cfg swap-mb = N */
+                if (capMB >= 64) {
+                    NSString *swapPath = [NSTemporaryDirectory() stringByAppendingPathComponent:@"madeira-swap.bin"];
+                    [[NSFileManager defaultManager] removeItemAtPath:swapPath error:nil];
+                    if ([[NSFileManager defaultManager] createFileAtPath:swapPath contents:nil attributes:@{NSFileProtectionKey: NSFileProtectionNone}]) {
+                        setenv("MADEIRA_SWAP_FILE", swapPath.UTF8String, 1);
+                        setenv("MADEIRA_SWAP_MB", [NSString stringWithFormat:@"%ld", capMB].UTF8String, 1);
+                        LOG("ml1077 swap tier armed: %{public}s, %ld MB", swapPath.UTF8String, capMB);
+                        fprintf(stderr, "[swap] ml1077 app: backing file %s, cap %ld MB\n", swapPath.UTF8String, capMB);
+                    }
+                }
+            }
+
+            /* ml1062: Documents/madeira-env.txt -- one KEY=VALUE per line, exported
+             * before Wine starts. FEX reads its whole configuration from FEX_*
+             * environment variables (EnvLoader over the process environment, which
+             * Wine builds from ours), so this turns every FEX option -- TSO emulation,
+             * multiblock, SMC checks, x87 precision -- into a file edit instead of a
+             * rebuild. Lines starting with # are comments. Logged, so a run's log
+             * always says what it ran with. */
+            {
+                /* ml1095: "env.NAME = value" lines of madeira.cfg; the legacy
+                 * madeira-env.txt (KEY=VALUE lines) only when madeira.cfg is absent. */
+                NSString *text = nil;
+                if (madeira_cfg_present()) {
+                    NSMutableString *acc = [NSMutableString string];
+                    NSString *cfg = [NSString stringWithContentsOfFile:[docs stringByAppendingPathComponent:@MADEIRA_CFG_FILE] encoding:NSUTF8StringEncoding error:nil];
+                    for (NSString *raw in [cfg componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+                        NSString *line = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                        NSRange eq = [line rangeOfString:@"="];
+                        if (![line hasPrefix:@"env."] || eq.location == NSNotFound) continue;
+                        NSString *k = [[line substringWithRange:NSMakeRange(4, eq.location - 4)] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                        NSString *v = [[line substringFromIndex:eq.location + 1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                        if (k.length) [acc appendFormat:@"%@=%@\n", k, v];
+                    }
+                    text = acc;
+                } else {
+                    text = [NSString stringWithContentsOfFile:[docs stringByAppendingPathComponent:@"madeira-env.txt"] encoding:NSUTF8StringEncoding error:nil];
+                }
+                for (NSString *raw in [text componentsSeparatedByCharactersInSet:[NSCharacterSet newlineCharacterSet]]) {
+                    NSString *line = [raw stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                    NSRange eq = [line rangeOfString:@"="];
+                    if (!line.length || [line hasPrefix:@"#"] || eq.location == NSNotFound || eq.location == 0) continue;
+                    NSString *k = [line substringToIndex:eq.location], *v = [line substringFromIndex:eq.location + 1];
+                    setenv(k.UTF8String, v.UTF8String, 1);
+                    LOG("madeira.cfg env: %{public}s=%{public}s", k.UTF8String, v.UTF8String);
+                    fprintf(stderr, "[madeira-env] ml1062 %s=%s\n", k.UTF8String, v.UTF8String);
+                }
+            }
         }
 
         // Steam S0: root CA trust. iOS has no API to enumerate system
@@ -1565,7 +1800,8 @@ static void *wine_process_thread(void *arg) {
             snprintf(exe_path, sizeof(exe_path), "C:\\windows\\system32\\%s", madeira_exe);
         }
 
-        // Optional MADEIRA_ARGS env var: args appended to argv, max 16 tokens.
+        // Optional MADEIRA_ARGS env var: args appended to argv, max 64 tokens
+        // (ml1500: was 16, too few for a launcher plus its lightweight-mode flags).
         //
         // Tokenized in place, honouring DOUBLE QUOTES. The old split was a plain
         // strtok_r on " ", so an argument containing a space (any Windows path —
@@ -1576,8 +1812,8 @@ static void *wine_process_thread(void *arg) {
         // guest sees the argument whole again. Apostrophes are ordinary
         // characters here and in the shell-free path below — nothing strips or
         // escapes them.
-        static char args_buf[1024];
-        char *extra_argv[16] = {0};
+        static char args_buf[4096];
+        char *extra_argv[64] = {0};
         int extra_argc = 0;
         const char *madeira_args = getenv("MADEIRA_ARGS");
         if (madeira_args && *madeira_args) {
@@ -1589,7 +1825,7 @@ static void *wine_process_thread(void *arg) {
 
             char *src = args_buf;      /* read cursor */
             char *dst = args_buf;      /* write cursor: always <= src, so in place */
-            while (*src && extra_argc < 16) {
+            while (*src && extra_argc < 64) {
                 while (*src == ' ' || *src == '\t') src++;
                 if (!*src) break;
                 extra_argv[extra_argc++] = dst;
@@ -1606,11 +1842,11 @@ static void *wine_process_thread(void *arg) {
                 if (had_separator) src++;
             }
             if (*src)
-                dprintf(STDERR_FILENO, "[WineProc] WARNING: MADEIRA_ARGS has more than 16 tokens, "
+                dprintf(STDERR_FILENO, "[WineProc] WARNING: MADEIRA_ARGS has more than 64 tokens, "
                                        "the rest are dropped: %s\n", src);
         }
 
-        char *argv[24];
+        char *argv[72];
         int argc = 0;
         argv[argc++] = "wine";
         argv[argc++] = exe_path;
@@ -1799,4 +2035,157 @@ int madeira_write_continue_flag(void) {
     close(fd);
     LOG("continue flag written: %{public}s", path);
     return 0;
+}
+
+
+/* ---- ml1076: in-app memory-backing canary --------------------------------- */
+#include <sys/mman.h>
+#include <os/proc.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <mach/mach.h>
+static void mc_sample(const char *mode, const char *phase, uint64_t *fp_out) {
+    task_vm_info_data_t v; mach_msg_type_number_t n = TASK_VM_INFO_COUNT;
+    memset(&v, 0, sizeof v);
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&v, &n) != KERN_SUCCESS) return;
+    if (fp_out) *fp_out = v.phys_footprint;
+    fprintf(stderr, "[mem-canary] ml1076 %s %s: footprint=%llu MB resident=%llu MB internal=%llu MB external=%llu MB compressed=%llu MB available=%lld MB\n",
+            mode, phase, (unsigned long long)v.phys_footprint >> 20, (unsigned long long)v.resident_size >> 20,
+            (unsigned long long)v.internal >> 20, (unsigned long long)v.external >> 20,
+            (unsigned long long)v.compressed >> 20, (long long)os_proc_available_memory() >> 20);
+}
+static uint64_t mc_next(uint64_t *s) { *s ^= *s << 13; *s ^= *s >> 7; *s ^= *s << 17; return *s; }
+static void mc_run(const char *mode, size_t bytes, int flags, const char *tmpdir, int punch) {
+    char path[1024]; int fd = -1; uint64_t before = 0, after = 0, seed = 0x192834756abcdefULL;
+    snprintf(path, sizeof path, "%s/madeira-memory-probe-XXXXXX", tmpdir);
+    if (!(flags & MAP_ANON)) {
+        fd = mkstemp(path);
+        if (fd < 0) { fprintf(stderr, "[mem-canary] %s: mkstemp failed errno=%d\n", mode, errno); return; }
+        /* the mapping must survive the device locking: no file protection */
+        [[NSFileManager defaultManager] setAttributes:@{NSFileProtectionKey: NSFileProtectionNone} ofItemAtPath:[NSString stringWithUTF8String:path] error:nil];
+        unlink(path);
+        if (ftruncate(fd, (off_t)bytes)) { fprintf(stderr, "[mem-canary] %s: ftruncate failed errno=%d\n", mode, errno); close(fd); return; }
+    }
+    mc_sample(mode, "before", &before);
+    uint64_t *p = mmap(NULL, bytes, PROT_READ | PROT_WRITE, flags, fd, 0);
+    if (p == MAP_FAILED) { fprintf(stderr, "[mem-canary] %s: mmap failed errno=%d\n", mode, errno); if (fd >= 0) close(fd); return; }
+    for (size_t i = 0; i < bytes / 8; i++) p[i] = mc_next(&seed);
+    mc_sample(mode, "written", &after);
+    fprintf(stderr, "[mem-canary] ml1076 %s: %zu MB written -> footprint +%lld MB\n", mode, bytes >> 20, (long long)(after - before) >> 20);
+    if (fd >= 0) {
+        if (msync(p, bytes, MS_SYNC)) fprintf(stderr, "[mem-canary] %s: msync errno=%d\n", mode, errno);
+        mc_sample(mode, "synced", NULL);
+        if (flags & MAP_SHARED) {
+            /* ask the kernel to drop the pages; a re-read must come back from the file */
+            if (madvise(p, bytes, MADV_DONTNEED)) fprintf(stderr, "[mem-canary] %s: madvise errno=%d\n", mode, errno);
+            mc_sample(mode, "advised", NULL);
+        }
+    }
+    seed = 0x192834756abcdefULL;
+    { size_t bad = 0; for (size_t i = 0; i < bytes / 8; i++) if (p[i] != mc_next(&seed)) { bad++; if (bad == 1) fprintf(stderr, "[mem-canary] %s: DATA MISMATCH at byte %zu\n", mode, i * 8); }
+      fprintf(stderr, "[mem-canary] ml1076 %s: verify %s (%zu bad words)\n", mode, bad ? "FAILED" : "ok", bad); }
+    mc_sample(mode, "verified", NULL);
+    if (punch && fd >= 0) {
+        /* decommit semantics: punch a hole under the first half; it must read as zero and cost nothing */
+        struct fpunchhole ph; memset(&ph, 0, sizeof ph); ph.fp_offset = 0; ph.fp_length = (off_t)(bytes / 2);
+        int r = fcntl(fd, F_PUNCHHOLE, &ph);
+        fprintf(stderr, "[mem-canary] ml1076 %s: F_PUNCHHOLE first half -> %d (errno %d); word0 now %llx, word at half %llx\n",
+                mode, r, r ? errno : 0, (unsigned long long)p[0], (unsigned long long)p[bytes / 16]);
+        mc_sample(mode, "punched", NULL);
+    }
+    munmap(p, bytes);
+    if (fd >= 0) close(fd);
+    mc_sample(mode, "released", NULL);
+}
+void madeira_memory_canary(const char *tmpdir) {
+    fprintf(stderr, "[mem-canary] ml1076 start (page %ld, tmp %s)\n", sysconf(_SC_PAGESIZE), tmpdir);
+    mc_run("anonymous", 64u << 20, MAP_PRIVATE | MAP_ANON, tmpdir, 0);
+    mc_run("file-private-COW", 64u << 20, MAP_PRIVATE, tmpdir, 0);
+    mc_run("file-shared-64MB", 64u << 20, MAP_SHARED, tmpdir, 1);
+    mc_run("file-shared-512MB", 512u << 20, MAP_SHARED, tmpdir, 0);
+    /* ml1079: CONTENTION. ph-rdr46 stalled with a thread blocked in a first-touch
+     * page fault on a fresh 32 MB extent while ~886 MB of earlier extents in the
+     * SAME file were dirty (presumably being written back). Does a fault on a
+     * sparse region block behind writeback of the same vnode? And does a separate
+     * file avoid it? Dirty 512 MB, kick writeback, then time 64 first touches on
+     * a fresh region of the same file and of a second file, several times. */
+    {
+        char pa[1024], pb[1024]; int fa, fb; size_t big = 512u << 20, probe = 64u << 20; unsigned round;
+        snprintf(pa, sizeof pa, "%s/madeira-memory-probe-A-XXXXXX", tmpdir); snprintf(pb, sizeof pb, "%s/madeira-memory-probe-B-XXXXXX", tmpdir);
+        fa = mkstemp(pa); fb = mkstemp(pb);
+        if (fa >= 0 && fb >= 0) {
+            [[NSFileManager defaultManager] setAttributes:@{NSFileProtectionKey: NSFileProtectionNone} ofItemAtPath:[NSString stringWithUTF8String:pa] error:nil];
+            [[NSFileManager defaultManager] setAttributes:@{NSFileProtectionKey: NSFileProtectionNone} ofItemAtPath:[NSString stringWithUTF8String:pb] error:nil];
+            unlink(pa); unlink(pb);
+            ftruncate(fa, (off_t)(big + 8 * probe)); ftruncate(fb, (off_t)(8 * probe));
+            uint64_t *dirty = mmap(NULL, big, PROT_READ | PROT_WRITE, MAP_SHARED, fa, 0);
+            if (dirty != MAP_FAILED) {
+                uint64_t seed = 1;
+                for (size_t i = 0; i < big / 8; i++) dirty[i] = mc_next(&seed);
+                msync(dirty, big, MS_ASYNC);
+                for (round = 0; round < 6; round++) {
+                    struct timeval t0, t1, t2; unsigned k; volatile char sink = 0;
+                    char *ra = mmap(NULL, probe, PROT_READ | PROT_WRITE, MAP_SHARED, fa, (off_t)(big + round * probe));
+                    char *rb = mmap(NULL, probe, PROT_READ | PROT_WRITE, MAP_SHARED, fb, (off_t)(round * probe));
+                    if (ra == MAP_FAILED || rb == MAP_FAILED) break;
+                    gettimeofday(&t0, NULL);
+                    for (k = 0; k < 64; k++) sink += ra[(probe / 64) * k];
+                    gettimeofday(&t1, NULL);
+                    for (k = 0; k < 64; k++) sink += rb[(probe / 64) * k];
+                    gettimeofday(&t2, NULL);
+                    fprintf(stderr, "[mem-canary] ml1079 round %u (%s): same-file first-touch %ld us/64 pages, other-file %ld us/64 pages\n", round,
+                            round == 0 ? "right after dirtying 512 MB" : "later",
+                            (long)((t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_usec - t0.tv_usec)),
+                            (long)((t2.tv_sec - t1.tv_sec) * 1000000 + (t2.tv_usec - t1.tv_usec)));
+                    (void)sink;
+                    munmap(ra, probe); munmap(rb, probe);
+                    usleep(500000);
+                }
+                mc_sample("contention", "after", NULL);
+                munmap(dirty, big);
+            }
+        }
+        if (fa >= 0) close(fa); if (fb >= 0) close(fb);
+    }
+    /* ml1080: SUSTAINED DIRTYING THROUGHPUT. Hypothesis for the ph-rdr46 stall:
+     * xnu throttles producers of dirty file-backed pages once the dirty backlog
+     * passes a threshold, pacing them to the (wear-limited) writeback rate. Write
+     * 1.5 GB through one shared mapping in 128 MB chunks and time each chunk; a
+     * cliff after N chunks is the threshold, and the slow rate is the ceiling any
+     * file-backed tier would impose on the game's loading writes. */
+    {
+        char pc[1024]; int fc; size_t total = 1536u << 20, chunk = 128u << 20;
+        snprintf(pc, sizeof pc, "%s/madeira-memory-probe-C-XXXXXX", tmpdir);
+        fc = mkstemp(pc);
+        if (fc >= 0) {
+            [[NSFileManager defaultManager] setAttributes:@{NSFileProtectionKey: NSFileProtectionNone} ofItemAtPath:[NSString stringWithUTF8String:pc] error:nil];
+            unlink(pc); ftruncate(fc, (off_t)total);
+            uint64_t *m = mmap(NULL, total, PROT_READ | PROT_WRITE, MAP_SHARED, fc, 0);
+            if (m != MAP_FAILED) {
+                size_t c; struct timeval t0, t1;
+                for (c = 0; c < total / chunk; c++) {
+                    uint64_t *q = m + (c * chunk) / 8; size_t i;
+                    gettimeofday(&t0, NULL);
+                    for (i = 0; i < chunk / 8; i += 2048) q[i] = (uint64_t)i ^ c;   /* one word per 16 KB page: dirty every page, minimal CPU */
+                    gettimeofday(&t1, NULL);
+                    long us = (t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_usec - t0.tv_usec);
+                    task_vm_info_data_t v; mach_msg_type_number_t n = TASK_VM_INFO_COUNT; memset(&v, 0, sizeof v);
+                    task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&v, &n);
+                    fprintf(stderr, "[mem-canary] ml1080 chunk %zu: dirtied 128 MB in %ld us (%ld MB/s); footprint=%llu MB external=%llu MB\n",
+                            c, us, us > 0 ? (long)(128000000L / us) : -1L, (unsigned long long)v.phys_footprint >> 20, (unsigned long long)v.external >> 20);
+                }
+                {   /* and a re-read of the first chunk after the rest was written: still cheap? */
+                    volatile uint64_t sink = 0; size_t i; gettimeofday(&t0, NULL);
+                    for (i = 0; i < chunk / 8; i += 2048) sink += m[i];
+                    gettimeofday(&t1, NULL);
+                    fprintf(stderr, "[mem-canary] ml1080 re-read of chunk 0: %ld us\n", (long)((t1.tv_sec - t0.tv_sec) * 1000000 + (t1.tv_usec - t0.tv_usec)));
+                    (void)sink;
+                }
+                munmap(m, total);
+            }
+            close(fc);
+        }
+        mc_sample("throughput", "after", NULL);
+    }
+    fprintf(stderr, "[mem-canary] ml1076 done\n");
 }

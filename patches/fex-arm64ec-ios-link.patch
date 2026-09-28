@@ -1,0 +1,11 @@
+diff --git a/Source/Windows/ARM64EC/CMakeLists.txt b/Source/Windows/ARM64EC/CMakeLists.txt
+index 0000000..0000000 100644
+--- a/Source/Windows/ARM64EC/CMakeLists.txt
++++ b/Source/Windows/ARM64EC/CMakeLists.txt
+@@ -58,3 +58,6 @@
+   target_link_options(arm64ecfex PRIVATE -static)
++  # The iOS-host link keeps MinGW startup/CRT defaults, but Clang's C++
++  # standard library is not selected by those defaults in this toolchain.
++  target_link_libraries(arm64ecfex PRIVATE c++ c++abi unwind)
+ else()
+   target_link_options(arm64ecfex PRIVATE -static -nostdlib -nostartfiles -nodefaultlibs -lc++ -lc++abi -lunwind)

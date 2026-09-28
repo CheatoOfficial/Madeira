@@ -36,6 +36,10 @@ enum DeviceLoadDiagnostics {
 
 enum LibraryFlags {
     static func enabled(_ key: String, fallback: Bool = true) -> Bool {
+        // ml1840: canonical config remains available after migration removes
+        // madeira-env.txt. MADEIRA_FLAGS_CONFIG=0 restores legacy-only lookup.
+        let configured = MadeiraConfig.environmentValues()
+        if configured["MADEIRA_FLAGS_CONFIG"] != "0", let value = configured[key] { return value != "0" }
         // UI preferences are needed before the launch worker imports the file.
         let path = LibraryModel.documents.appendingPathComponent("madeira-env.txt")
         if let text = try? String(contentsOf: path, encoding: .utf8),
@@ -85,7 +89,52 @@ final class LibraryController: ObservableObject {
     }
 }
 
-// ml1140: opt-in library. Removing MADEIRA_FRONTEND=1 restores the diagnostic UI.
+/// ml1520: which interface Madeira starts with: the library (the default) or the
+/// diagnostic UI. The choice is made in either interface's settings, stored in
+/// UserDefaults and read once per run, so a change applies at the next start.
+/// Without a stored choice, an explicit MADEIRA_FRONTEND=0/1 line in
+/// madeira-frontend.txt or madeira-env.txt still decides. MADEIRA_FRONTEND_DEFAULT_NEW=0
+/// makes the diagnostic UI the default again.
+enum FrontendChoice {
+    static let key = "madeiraFrontend"
+    static let startup: (useNew: Bool, source: String) = {
+        if let stored = UserDefaults.standard.string(forKey: key), ["new", "old"].contains(stored) {
+            return (stored == "new", "setting")
+        }
+        if let file = legacyFile { return (file, "file") }
+        return (LibraryFlags.enabled("MADEIRA_FRONTEND_DEFAULT_NEW"), "default")
+    }()
+    /// The interface the next start uses.
+    static var preferNew: Bool {
+        guard let stored = UserDefaults.standard.string(forKey: key), ["new", "old"].contains(stored) else { return startup.useNew }
+        return stored == "new"
+    }
+    static func choose(new useNew: Bool) {
+        UserDefaults.standard.set(useNew ? "new" : "old", forKey: key)
+        LogStore.shared.log("[frontend] ml1520 next-start choice=\(useNew ? "new" : "old") source=setting")
+    }
+    private static var logged = false
+    static func logStartup() {
+        guard !logged else { return }
+        logged = true
+        LogStore.shared.log("[frontend] ml1520 choice=\(startup.useNew ? "new" : "old") source=\(startup.source)")
+    }
+    private static var legacyFile: Bool? {
+        for name in ["madeira-frontend.txt", "madeira-env.txt"] {
+            guard let text = try? String(contentsOf: LibraryModel.documents.appendingPathComponent(name), encoding: .utf8) else { continue }
+            for line in text.components(separatedBy: .newlines) {
+                switch line.trimmingCharacters(in: .whitespacesAndNewlines) {
+                case "MADEIRA_FRONTEND=1": return true
+                case "MADEIRA_FRONTEND=0": return false
+                default: continue
+                }
+            }
+        }
+        return nil
+    }
+}
+
+// ml1140: the library interface; FrontendChoice decides whether it or the diagnostic UI starts.
 struct LibraryEntry: Codable, Identifiable {
     var id = UUID()
     var title: String
@@ -94,10 +143,15 @@ struct LibraryEntry: Codable, Identifiable {
     var steamID: Int?
     var coverFile: String?
     var arguments = ""
+    // ml1960: imported launch metadata is distinct from a user's override.
+    var steamDefaultArguments: String?
     var resolution = "1280x720"
     var display = "fit"
     var fpsMode = 1
     var reducedX87 = true
+    // ml1990: processors reported to Windows code for this game (nil = the device's count).
+    // Some engines size worker pools from it and misbehave with many cores.
+    var cpuCount: Int?
     var fastSync = true
     var extendedModes = false
     var liveLogs = false
@@ -106,6 +160,8 @@ struct LibraryEntry: Codable, Identifiable {
     var controlOpacity = 0.7
     var controlSize = 1.0
     var controls: [TouchControl]?
+    // ml1970: the controller layout (preset id) this game last used; nil = Xbox default.
+    var controlLayout: String?
     var lastPlayed: Date?
     var graphicsAPI: String?
     var folderBytes: Int64?
@@ -128,15 +184,57 @@ struct LibraryEntry: Codable, Identifiable {
     var steamClientLaunch: Bool?
     var steamClientPath: String?
     var steamBuildID: Int?
+    // ml1780: true lets the client run the game's one-time installs (DirectX, Visual C++,
+    // PhysX...); otherwise Madeira marks them done before a client start.
+    var steamRunInstallers: Bool?
+    // ml2015: game details › One-time installs under Madeira Dock. nil (a fresh install) or
+    // true runs the pending installs at the next start, which then sets it to false (Skip).
+    var steamInstallersNext: Bool?
+    // ml1970: true starts this game through the regular desktop Steam client even while
+    // Madeira Dock is on ("Steam (more usage)" under Start with); nil keeps Madeira Dock.
+    var steamDesktopLaunch: Bool?
     var usesSteam: Bool { steamSession != nil || (steamAppID != nil && (steamNative != true || steamClientLaunch == true)) }
+    /// ml1490: the Windows Steam client is asked to start this game (-applaunch),
+    /// so the Wine desktop shows only the client until the game's window is up.
+    var steamGameLaunch: Bool { desktop != true && usesSteam && steamSession == nil && steamAppID != nil && steamInstalled != false }
+    /// ml1720: drive-relative path of the Steam client a client-routed launch starts. A native
+    /// install's relativePath is the GAME's executable; the client lives at steamClientPath.
+    var steamClientRelativePath: String {
+        steamNative == true ? (steamClientPath ?? relativePath) : relativePath
+    }
     /// Windows path of the Steam client used for a client-routed launch.
     private var steamClientWindowsPath: String {
         guard steamNative == true else { return windowsPath }
         return "C:\\" + (steamClientPath ?? "").replacingOccurrences(of: "/", with: "\\")
     }
     var launchArguments: String {
+        launchArguments(dock: MadeiraDock.routes(self))
+    }
+    func launchArguments(dock: Bool) -> String {
         if desktop == true { return "/desktop=shell,\(resolution) C:\\windows\\system32\\services.exe" }
         guard usesSteam else { return arguments }
+        if dock {
+            // ml1970: the game's pending one-time installs run first, in the same session.
+            if let script = MadeiraDock.installerScript {
+                return "/desktop=madeira,\(resolution) C:\\windows\\system32\\cmd.exe /c call \(script) & \"\(MadeiraDock.executable)\""
+            }
+            return "/desktop=madeira,\(resolution) \"\(MadeiraDock.executable)\""
+        }
+        // ml1530: a Madeira session lasts while its first program or any program it started
+        // runs. Steam's installer starts Steam.exe as it exits, and the session ended before
+        // Steam.exe counted (device log: the installer's session closed 13.7 s in and took
+        // the just-started client with it). The installer session now also runs services.exe,
+        // as the Desktop session does, which keeps the session (and the client) up until the
+        // user ends it; it also gives Steam's service a service manager to talk to. cmd.exe
+        // starts both. MADEIRA_STEAM_INSTALL_KEEPALIVE=0 starts the installer alone again.
+        // ml1540: without start.exe, which faulted at its first instruction on device (log 202:
+        // exit c000001d, so services.exe never ran). cmd.exe runs the installer, then
+        // services.exe in the foreground: cmd holds the session during the install and
+        // services.exe after it, until the setup's button ends the session.
+        if steamSession == "installer" && LibraryFlags.enabled("MADEIRA_STEAM_INSTALL_KEEPALIVE") {
+            return "/desktop=madeira,\(resolution) C:\\windows\\system32\\cmd.exe /c call \"\(windowsPath)\" & C:\\windows\\system32\\services.exe"
+                + (arguments.isEmpty ? "" : " " + arguments)
+        }
         let compatibility = steamSession != "installer" && LibraryFlags.enabled("MADEIRA_STEAM_COMPAT")
             ? " -no-cef-sandbox -cef-disable-gpu -nocrashmonitor" : ""
         // ml1470: a lighter client, after GameNative's Steam profile: no hang watchdog to kill a
@@ -144,14 +242,32 @@ struct LibraryEntry: Codable, Identifiable {
         // no shader pre-cache downloads. MADEIRA_STEAM_LIGHT=0 omits these flags.
         let light = steamSession != "installer" && LibraryFlags.enabled("MADEIRA_STEAM_LIGHT")
             ? " -cef-disable-hang-timeouts -nooverlay -nofriendsui -noshaders" : ""
+        // ml1500: for a GAME launch only (opening the client keeps its full UI), the rest of
+        // GameNative's client options that trim the client's own UI stack. Device log 194: the
+        // helper's second process was Chromium's crash reporter (--type=crashpad-handler), a whole
+        // extra process and image copy for nothing (-cef-disable-breakpad); chat, Big Picture,
+        // VR, streaming drivers, intro video, extensions, remote fonts, video decode and D3D11 in
+        // the helper are unused while a game runs. None of these touch the game or Steam's DRM.
+        // MADEIRA_STEAM_CEF_LIGHT=0 omits them.
+        let lighter = steamSession != "installer" && steamAppID != nil && steamInstalled != false
+            && LibraryFlags.enabled("MADEIRA_STEAM_LIGHT") && LibraryFlags.enabled("MADEIRA_STEAM_CEF_LIGHT")
+            ? " -cef-disable-breakpad -cef-single-process -cef-in-process-gpu -cef-disable-extensions"
+              + " -cef-disable-remote-fonts -cef-disable-accelerated-video-decode -cef-disable-d3d11"
+              + " -nochatui -nobigpicture -nointro -vrdisable -skipstreamingdrivers -no-dwrite" : ""
         let mode: String
         // ml1360: a game launch keeps Steam's library window closed (-silent);
         // sign-in and error windows still appear. MADEIRA_STEAM_SILENT=0 shows it.
+        // ml1710: license agreements are answered in Madeira before launch (SteamEulaStore), so
+        // every game launch stays silent.
         let silent = LibraryFlags.enabled("MADEIRA_STEAM_SILENT") ? " -silent" : ""
         if let id = steamAppID { mode = steamInstalled == false ? " steam://install/\(id)" : silent + " -applaunch \(id)" }
         else { mode = steamBigPicture == true ? " -gamepadui" : "" }
-        return "/desktop=madeira,\(resolution) \"\(steamClientWindowsPath)\"" + compatibility + light + mode + (arguments.isEmpty ? "" : " " + arguments)
+        return "/desktop=madeira,\(resolution) \"\(steamClientWindowsPath)\"" + compatibility + light + lighter + mode + (arguments.isEmpty ? "" : " " + arguments)
     }
+    /// ml1500: the client's helper and background programs; see configureLaunch.
+    static let steamBackgroundImages = ["steamwebhelper.exe", "steamservice.exe", "steamerrorreporter.exe",
+                                        "steamerrorreporter64.exe", "gldriverquery.exe", "gldriverquery64.exe",
+                                        "vulkandriverquery.exe", "vulkandriverquery64.exe", "conhost.exe"]
     static let desktopID = UUID(uuidString: "AF046C35-C32A-497B-92BC-0BBD14F8CB61")!
     static var desktopEntry: LibraryEntry {
         var entry = LibraryEntry(title: "Desktop", relativePath: "windows/system32/explorer.exe", bits: 64)
@@ -174,6 +290,7 @@ struct LibraryEntry: Codable, Identifiable {
             else if !inToken { tokens += 1; inToken = true }
         }
         if usesSteam {
+            if MadeiraDock.routes(self) { try MadeiraDock.validate(self) }
             let client = steamNative == true ? (steamClientPath ?? "") : relativePath
             if steamNative == true && client.isEmpty {
                 throw LibraryError.message("Install the Windows Steam client (Settings › Windows Steam client), or start this game directly.")
@@ -184,36 +301,116 @@ struct LibraryEntry: Codable, Identifiable {
                 throw LibraryError.message("The Steam launch profile is invalid or Steam integration is disabled.")
             }
         }
-        guard launchArguments.utf8.count < 1024 else { throw LibraryError.message("The complete launch command is too long.") }
-        guard !quoted, tokens <= 16 else { throw LibraryError.message("Use balanced double quotes and at most 16 launch arguments.") }
+        // ml1500: the bridge now takes 64 arguments in 4 KB (was 16 in 1 KB), room for a
+        // launcher's lightweight-mode flags plus the user's own arguments.
+        guard launchArguments.utf8.count < 4096 else { throw LibraryError.message("The complete launch command is too long.") }
+        guard !quoted, tokens <= 64 else { throw LibraryError.message("Use balanced double quotes and at most 64 launch arguments in total.") }
     }
 
     // Called on the existing launch worker, after text-file defaults are read.
-    func applyEnvironment() {
-        configureLaunch()
+    func applyEnvironment(dock: Bool? = nil) {
+        configureLaunch(dock: dock)
         setenv("FEX_X87REDUCEDPRECISION", reducedX87 ? "1" : "0", 1)
+        if let cpuCount, cpuCount > 0 { setenv("MADEIRA_CPU_COUNT", String(cpuCount), 1) } else { unsetenv("MADEIRA_CPU_COUNT") }
         setenv("MADEIRA_FASTSYNC", fastSync ? "auto" : "0", 1)
         setenv("MADEIRA_FASTSYNC_SEM", semaphoreFastPath == true ? "1" : "0", 1)
-        setenv("MADEIRA_EXTENDED_MODES", extendedModes ? "1" : "0", 1)
+        // ml1520: the "Offer higher display modes" toggle is gone, so every game gets the default
+        // (off) mode ladder whatever an older profile stored. MADEIRA_EXTENDED_MODES_FORCE_DEFAULT=0
+        // honours the stored value again.
+        let extended = LibraryFlags.enabled("MADEIRA_EXTENDED_MODES_FORCE_DEFAULT") ? false : extendedModes
+        setenv("MADEIRA_EXTENDED_MODES", extended ? "1" : "0", 1)
+        if extended != extendedModes { LogStore.shared.log("[display-modes] ml1520 stored extended modes ignored") }
         setenv("DXMT_D9_ANISO_LIMIT", String(anisotropyLimit ?? 0), 1)
         GuestDisplay.configureSessionDefault(view: CGSize(width: 1280, height: 720), knob: resolution)
         madeira_set_vsync_locked(Int32(fpsMode))
         fputs("[frontend] ml1140 launch profile applied\n", stderr)
         LogStore.shared.log("[display-shape] ml1340 resolution=\(resolution) mode=\(display)")
     }
-    func configureLaunch() {
+    func configureLaunch(dock: Bool? = nil) {
+        let useDock = dock ?? MadeiraDock.routes(self)
+        MadeiraDock.configure(self, dock: useDock)
         setenv("MADEIRA_EXE", desktop == true || usesSteam ? "explorer.exe" : windowsPath, 1)
-        setenv("MADEIRA_ARGS", launchArguments, 1)
+        setenv("MADEIRA_ARGS", launchArguments(dock: useDock), 1)
         if desktop == true || usesSteam { setenv("MADEIRA_DESKTOP", "1", 1) } else { unsetenv("MADEIRA_DESKTOP") }
-        // ml1470: the Steam client trades messages with its Chromium helper, which FEX already
-        // runs with stricter ordering (found by its libcef.dll). Give the client the same; the
-        // games it starts keep the default. MADEIRA_STEAM_ORDERED_CLIENT=0 turns this off.
+        // ml1470: the Steam client trades messages with its Chromium helper, which FEX can run
+        // with stricter ordering (found by its libcef.dll); the client can get the same, and the
+        // games it starts keep the default.
+        // ml1490: OFF by default. The startup error it was aimed at was a dropped I/O completion
+        // (fixed in the server, ml1480), and the profile costs the client and its helper CPU the
+        // game needs (device log 193: the helper's renderer and the client's engine thread were a
+        // quarter of all samples during play). MADEIRA_ORDERED_PROFILE=1 in madeira-env.txt turns
+        // it back on for Chromium hosts, plus MADEIRA_STEAM_ORDERED_CLIENT=1 for the client.
+        let ordered = LibraryFlags.enabled("MADEIRA_ORDERED_PROFILE", fallback: false)
+        setenv("MADEIRA_ORDERED_PROFILE", ordered ? "1" : "0", 1)
         let client = steamClientWindowsPath.split(separator: "\\").last.map(String.init) ?? ""
-        if usesSteam, !client.isEmpty, LibraryFlags.enabled("MADEIRA_STEAM_ORDERED_CLIENT") {
+        if ordered, usesSteam, !client.isEmpty, LibraryFlags.enabled("MADEIRA_STEAM_ORDERED_CLIENT", fallback: false) {
             setenv("MADEIRA_ORDERED_PROFILE_CLIENT", client, 1)
             LogStore.shared.log("[ordered-profile] ml1470 Steam client \(client) gets the stricter ordering")
         } else {
             unsetenv("MADEIRA_ORDERED_PROFILE_CLIENT")
+        }
+        // ml1500: every guest thread runs at the highest iOS class (USER_INTERACTIVE), so the
+        // client's ~100 threads competed with the game for the performance cores (device log 194:
+        // helper renderer and the client's engine thread ~25 % of samples during play). ntdll now
+        // takes a per-program class from these lists ([thread-qos]); the client's helpers and
+        // background tools run at UTILITY, the client itself at DEFAULT, and the game keeps
+        // USER_INTERACTIVE. MADEIRA_STEAM_BACKGROUND_QOS=0 leaves every thread interactive.
+        if usesSteam, !client.isEmpty, LibraryFlags.enabled("MADEIRA_STEAM_BACKGROUND_QOS") {
+            setenv("MADEIRA_QOS_UTILITY_EXES", Self.steamBackgroundImages.joined(separator: ";"), 1)
+            setenv("MADEIRA_QOS_DEFAULT_EXES", client, 1)
+            // ml1530: the web helper stays alive while the game runs (ending it froze the game,
+            // logs 199/200) but drops to BACKGROUND, the lowest class, so it only gets spare
+            // cycles. MADEIRA_STEAM_HELPER_BACKGROUND=0 keeps it at UTILITY.
+            if LibraryFlags.enabled("MADEIRA_STEAM_HELPER_BACKGROUND") {
+                setenv("MADEIRA_QOS_BACKGROUND_EXES", "steamwebhelper.exe", 1)
+            } else {
+                unsetenv("MADEIRA_QOS_BACKGROUND_EXES")
+            }
+        } else {
+            unsetenv("MADEIRA_QOS_UTILITY_EXES"); unsetenv("MADEIRA_QOS_DEFAULT_EXES"); unsetenv("MADEIRA_QOS_BACKGROUND_EXES")
+        }
+        // ml1560: console programs of a Steam session get consoles without windows (kernelbase,
+        // [console-headless]). Device log 204: the keep-alive cmd.exe's and the web helper's
+        // console windows sat on top of Steam's sign-in window and took every tap on it.
+        // MADEIRA_STEAM_HEADLESS_CONSOLES=0 shows those console windows again.
+        if usesSteam, LibraryFlags.enabled("MADEIRA_STEAM_HEADLESS_CONSOLES") {
+            setenv("MADEIRA_HEADLESS_CONSOLE_EXES", "cmd.exe;steamwebhelper.exe;steamservice.exe;steam.exe;steamerrorreporter.exe", 1)
+        } else {
+            unsetenv("MADEIRA_HEADLESS_CONSOLE_EXES")
+        }
+        // ml1520: the client's web helper (its UI browser) ends 10 s after the game's window
+        // appears and may not restart until the session ends; the client keeps the game's
+        // connection itself. Device log 196: the helper's renderer alone was 16 % of all CPU
+        // during play. ntdll does it ([park], signal_arm64_ios.c) and the client's own thread
+        // gives the helper's memory back. MADEIRA_STEAM_WEBHELPER_STOP=0 keeps the helper running.
+        // ml1530: OPT-IN (=1). Device logs 199/200: the game stopped presenting 10-20 s after the
+        // helper ended, main thread in a wait nothing signals; with the helper alive (log 196) it
+        // ran for minutes. The helper's threads also never exited, so its memory stayed anyway.
+        // ml1790: MADEIRA_STEAM_WEBHELPER_FREEZE=1 (opt-in experiment) holds the helper's threads
+        // at their next wait instead of ending it (ntdll [park] ml1790), from 10 s after the
+        // game's window until the session ends: no helper CPU, and the client never sees it exit.
+        // ml1800: ON by default (owner: keep the real client, make it as quiet as possible while
+        // the game plays); the watchdog in LibraryModel.watchFrozenHelper thaws it if the game
+        // stops presenting. MADEIRA_STEAM_WEBHELPER_FREEZE=0 keeps the helper running.
+        unsetenv("MADEIRA_PARK_MODE")
+        if usesSteam, !client.isEmpty, LibraryFlags.enabled("MADEIRA_STEAM_WEBHELPER_FREEZE") {
+            setenv("MADEIRA_PARK_EXES", "steamwebhelper.exe", 1)
+            setenv("MADEIRA_PARK_MODE", "freeze", 1)
+            unsetenv("MADEIRA_PARK_OWNER_EXES")
+            LogStore.shared.log("[park] ml1790 Steam's web helper freezes while the game runs")
+        } else if usesSteam, !client.isEmpty, LibraryFlags.enabled("MADEIRA_STEAM_WEBHELPER_STOP", fallback: false) {
+            setenv("MADEIRA_PARK_EXES", "steamwebhelper.exe", 1)
+            setenv("MADEIRA_PARK_OWNER_EXES", client, 1)
+        } else {
+            unsetenv("MADEIRA_PARK_EXES"); unsetenv("MADEIRA_PARK_OWNER_EXES")
+        }
+        // ml1490: the store identity of a game started directly, for the Steam
+        // environment WineProcessBridge publishes ([steam-env]). A client-routed
+        // or desktop launch gets none: the client sets it for the games it starts.
+        if desktop != true && !usesSteam, let id = steamAppID, SteamPaths.validAppID(id) {
+            setenv("MADEIRA_STEAM_APPID", String(id), 1)
+        } else {
+            unsetenv("MADEIRA_STEAM_APPID")
         }
     }
 }
@@ -232,21 +429,71 @@ final class LibraryModel: ObservableObject {
     @Published var opacity = 0.7
     @Published var fpsMode = 1
     @Published var error: String?
+    /// ml1970: asks the library to close a details page held open during a launch.
+    @Published var closeDetail = 0
     @Published var sessionMessage = ""
     @Published var launching = false
     @Published var overlayFields = ["FPS", "Frame time", "RAM", "Battery"]
     private var launchPresent: UInt64 = 0
     private var launchSurface: UInt64 = 0
     private var launchStarted = Date()
+    /// ml1510: read by the starting screen for its elapsed-time line.
+    var launchStartedAt: Date { launchStarted }
     @Published var launchSlow = false
     @Published var launchLogs = false
+    @Published private(set) var dockLaunching = false
+    @Published private(set) var dockLaunchFailure: String?
+    private var dockExitObserved = false
     private var launchDismissLogged = false
+    /// ml1490: a game started through the Windows Steam client keeps the
+    /// starting screen over the Wine desktop until the game's window is up.
+    private var steamHold: SteamLaunchHold?
+    private var steamSceneLines = 0
+    /// The starting screen offers "Show Steam".
+    @Published private(set) var steamHolding = false
+    /// A Steam client window is up behind the starting screen.
+    @Published private(set) var steamAttention = false
     var menuButtonRect = CGRect.zero
     var performanceRect = CGRect.zero
+    /// ml1570: setup's "Tap when Steam is installed" button over a running session (window points).
+    var finishButtonRect = CGRect.zero
     private let modalTouchGuard = LibraryFlags.enabled("MADEIRA_MODAL_TOUCH_GUARD")
     var blocksGameplayTouch: Bool { modalTouchGuard && current != nil && (menu || launching) }
     private var timer: Timer?
     private var sawProcess = false
+    // ml2000: why a session ended by itself (not Quit): the pool ran dry or the game
+    // exited with a Windows error. MADEIRA_EXIT_REPORT=0 returns without a message.
+    private var quitRequested = false
+    private var pressureAtStart = false
+    private var programsGoneSince: Date?
+    private var dockSessionEnding = false
+    /// ml2000: a Dock session keeps its desktop after Madeira Dock exits, so a game that
+    /// ended (or crashed) left the library behind its last frame. Once the Dock host has
+    /// exited and every program started in this session has ended for 5 s, end the
+    /// session like Quit, keeping the exit report. MADEIRA_DOCK_END_WITH_GAME=0 keeps it.
+    private func endDockSessionAfterGame() {
+        guard dockLaunching, dockExitObserved, dockLaunchFailure == nil, !quitRequested, !dockSessionEnding,
+              LibraryFlags.enabled("MADEIRA_DOCK_END_WITH_GAME"), wine_programs_started() > 0 else { return }
+        guard wine_programs_live() == 0 else { programsGoneSince = nil; return }
+        let since = programsGoneSince ?? Date()
+        programsGoneSince = since
+        guard Date().timeIntervalSince(since) >= 5 else { return }
+        dockSessionEnding = true
+        LogStore.shared.log("[dock-session] ml2000 programs=\(wine_programs_started()) all ended; ending the session")
+        if wineserver_request_session_stop() != 0 { sessionMessage = "Game ended. Closing…"; menu = false }
+    }
+    private func exitReport() -> String? {
+        guard !quitRequested, LibraryFlags.enabled("MADEIRA_EXIT_REPORT") else { return nil }
+        if !pressureAtStart && StikJITHelper.poolPressureRecorded {
+            LogStore.shared.log("[exit-report] ml2000 pool=dry")
+            return "This game needed more code memory than Madeira reserved when it opened. Close Madeira in the app switcher and open it again; it reserves more from then on."
+        }
+        var status: UInt32 = 0
+        guard wine_crash_exit_status(&status) != 0 else { return nil }
+        LogStore.shared.log("[exit-report] ml2000 status=0x\(String(status, radix: 16))")
+        let kind = status == 0xC0000005 ? " (memory access violation)" : status == 0xC0000017 ? " (out of memory)" : ""
+        return "The game stopped with Windows error 0x\(String(status, radix: 16, uppercase: true))\(kind). Export the diagnostic log from Settings to report it."
+    }
     private var readOnly = false
     private var metadataInFlight = Set<UUID>()
     private var savedControls: [TouchControl] = []
@@ -271,12 +518,8 @@ final class LibraryModel: ObservableObject {
 
     func refreshFlag() {
         guard current == nil, wine_process_is_running() == 0 else { return }
-        let allowed = ["madeira-env.txt", "madeira-frontend.txt"].contains { name in
-            guard let text = try? String(contentsOf: Self.documents.appendingPathComponent(name), encoding: .utf8) else { return false }
-            return text.components(separatedBy: .newlines).contains {
-                $0.trimmingCharacters(in: .whitespacesAndNewlines) == "MADEIRA_FRONTEND=1"
-            }
-        }
+        // ml1520: fixed for the whole run (FrontendChoice); a change applies at the next start.
+        let allowed = FrontendChoice.startup.useNew
         if enabled != allowed { fputs("[frontend] ml1140 enabled=\(allowed ? 1 : 0)\n", stderr) }
         enabled = allowed
         LibraryController.shared.configure(enabled: allowed, ownsInput: allowed)
@@ -348,8 +591,16 @@ final class LibraryModel: ObservableObject {
         var next = entries
         if let index = next.firstIndex(where: { $0.steamAppID == appID }) {
             var entry = next[index]
-            let keepExecutable = entry.steamNative == true && (try? Self.executable(entry.relativePath)) != nil
-            if !keepExecutable { entry.relativePath = installed.relativePath; entry.bits = installed.bits; entry.arguments = installed.arguments }
+            // ml1490: a redistributable's installer chosen before the filter is not kept.
+            let installer = LibraryFlags.enabled("MADEIRA_STEAM_EXE_FILTER") &&
+                SteamExecutableRules.installerReason(executable: entry.relativePath, installFolder: entry.steamInstallPath) != nil
+            let keepExecutable = entry.steamNative == true && (try? Self.executable(entry.relativePath)) != nil && !installer
+            if !keepExecutable {
+                entry.relativePath = installed.relativePath; entry.bits = installed.bits; entry.arguments = installed.arguments
+                entry.steamDefaultArguments = installed.steamDefaultArguments
+            } else if entry.relativePath.caseInsensitiveCompare(installed.relativePath) == .orderedSame && entry.arguments == installed.arguments {
+                entry.steamDefaultArguments = installed.steamDefaultArguments
+            }
             entry.steamNative = true; entry.steamInstalled = true
             entry.steamInstallPath = installed.steamInstallPath; entry.steamBuildID = installed.steamBuildID
             entry.folderBytes = installed.folderBytes ?? entry.folderBytes
@@ -491,9 +742,21 @@ final class LibraryModel: ObservableObject {
         return names
     }
 
-    func begin(_ entry: LibraryEntry) {
+    func begin(_ entry: LibraryEntry, dock: Bool = false) {
+        dockLaunching = dock
+        dockLaunchFailure = nil; dockExitObserved = false
+        wine_dock_exit_reset()
+        // ml2015: the one-time-install batch's `dockhost.exe --start-services` exits first;
+        // only the host's own exit counts. MADEIRA_DOCK_SERVICES_EXIT_SKIP=0 counts it again.
+        if dock && MadeiraDock.installerScript != nil && MadeiraDock.installerServicesStep &&
+            LibraryFlags.enabled("MADEIRA_DOCK_SERVICES_EXIT_SKIP") {
+            wine_dock_exit_skip_next()
+        }
+        quitRequested = false; pressureAtStart = StikJITHelper.poolPressureRecorded   // ml2000
+        programsGoneSince = nil; dockSessionEnding = false; wine_programs_reset()
         LibraryController.shared.configure(enabled: enabled, ownsInput: false)
-        launchPresent = madeira_get_present_count(); launchStarted = Date(); launchSlow = false; launchLogs = false
+        Self.sessionsThisRun += 1   // ml1790
+        launchPresent = madeira_get_present_count(); launchStarted = Date(); launchSlow = false; launchLogs = entry.liveLogs
         launchSurface = winios_surface_present_count()
         launching = true; overlayFields = entry.overlayFields ?? ["FPS", "Frame time", "RAM", "Battery"]
         activeEntry = entry; current = entry.id; menu = false; performance = entry.performance; liveLogs = entry.liveLogs
@@ -504,32 +767,89 @@ final class LibraryModel: ObservableObject {
         savedDisplay = InputSettings.shared.displayMode
         if let profile = entry.controls { controls.controls = profile }
         controls.visible = entry.touchControls; controls.sizeScale = entry.controlSize
+        HardwareInput.shared.reservePadSlotForSession(touchControls: entry.touchControls)   // ml1990
+        // ml1970: remember the game's layout; a game that never had one starts on Xbox.
+        // MADEIRA_CONTROLS_XBOX_DEFAULT=0 keeps the shared layout instead.
+        if ControlPresetsModel.enabled {
+            let presets = ControlPresetsModel.shared
+            presets.setActive(entry.controlLayout)
+            if entry.controls == nil, entry.controlLayout == nil, LibraryFlags.enabled("MADEIRA_CONTROLS_XBOX_DEFAULT") {
+                presets.load(ControlPresetLayout.xboxID, screen: ControlPresetsModel.currentScreen())
+            }
+        }
         InputSettings.shared.displayMode = DisplayMode(rawValue: entry.display) ?? .fit
         FullscreenState.shared.active = true
         MetalHostView.shared.isHidden = false
         ProMotionIntent.shared.setActive(true, maxHz: ProMotionIntent.maxHz(for: Int32(entry.fpsMode)))
-        if entry.steamSession == nil { var played = entry; played.lastPlayed = Date(); save(played) }
+        if entry.steamSession == nil {
+            var played = entry; played.lastPlayed = Date()
+            // ml1530: a start mode taken from the default (LibraryDetail.start) is not stored as a choice.
+            if let stored = entries.first(where: { $0.id == entry.id }), stored.steamClientLaunch == nil { played.steamClientLaunch = nil }
+            save(played)
+        }
         if entry.usesSteam { fputs("[steam-bridge] ml1260 session=\(entry.steamSession ?? "app") appid=\(entry.steamAppID ?? 0) desktop=1\n", stderr) }
         // ml1420: what the Windows Steam client downloads before the game starts.
         SteamClientProgressModel.shared.start(entry)
         launchDismissLogged = false
+        beginSteamHold(entry)
         sawProcess = false
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.poll() }
     }
     private func poll() {
-        if launching {
+        if dockLaunching && !dockExitObserved && LibraryFlags.enabled("MADEIRA_DOCK_STATUS") {
+            var status: Int32 = 0
+            let ended = wine_dock_exit_status(&status) != 0
+            let report = MainActor.assumeIsolated { MadeiraDock.pollReport(force: ended) }
+            if ended || report.result != nil {
+                dockExitObserved = true
+                if !ended { status = Int32(report.result ?? 0) }
+                if launching || status != 0 {
+                    dockLaunchFailure = report.failure ?? "Madeira Dock exited before a game window appeared. Export the diagnostic log."
+                    LogStore.shared.log("[dock-status] ml1860 host-ended status=\(status) native=\(ended ? 1 : 0) starting=\(launching ? 1 : 0)", level: .error)
+                    MainActor.assumeIsolated { MadeiraDock.cleanup() }
+                }
+            }
+        }
+        endDockSessionAfterGame()
+        if steamHold != nil {
+            // ml1490: the desktop's own frames (the client's console and helper
+            // windows) do not end this starting screen; the game's window does.
+            pollSteamHold()
+            if launching && !launchSlow && Date().timeIntervalSince(launchStarted) > 30 { launchSlow = true }
+        } else if launching {
             if madeira_get_present_count() >= launchPresent + 3 {
                 showGameView(reason: "present")
             } else if winios_surface_present_count() > launchSurface {
                 showGameView(reason: "surface")
             } else if Date().timeIntervalSince(launchStarted) > 30 { launchSlow = true }
         }
+        watchFrozenHelper()
         if wine_process_is_running() != 0 {
             sawProcess = true
             if sessionMessage == "Starting…" { sessionMessage = "" }
         } else if sawProcess && wineserver_is_running() == 0 { finish() }
     }
+
+    /// ml1800: while Steam's web helper is frozen (ntdll [park], MADEIRA_PARK_MODE=freeze), a game
+    /// that presents no frame for 6 s with Madeira in front gets the helper back: ending the helper
+    /// once left games waiting on the client (logs 199/200), and a freeze could do the same.
+    /// MADEIRA_STEAM_FREEZE_WATCHDOG=0 leaves the helper frozen whatever happens.
+    private func watchFrozenHelper() {
+        guard !frozenThawed, madeira_park_frozen() > 0, UIApplication.shared.applicationState == .active else {
+            frozenWatchCount = nil; return
+        }
+        // D3D presents plus desktop-surface frames: a game that draws either way counts.
+        let count = madeira_get_present_count() &+ UInt64(winios_surface_present_count()), now = Date()
+        if count != frozenWatchCount { frozenWatchCount = count; frozenWatchSince = now; return }
+        guard now.timeIntervalSince(frozenWatchSince) >= 6, LibraryFlags.enabled("MADEIRA_STEAM_FREEZE_WATCHDOG") else { return }
+        frozenThawed = true
+        LogStore.shared.log("[park] ml1800 watchdog: no frame for 6 s with \(madeira_park_frozen()) helper thread(s) frozen; thawing", level: .error)
+        madeira_park_thaw()
+    }
+    private var frozenWatchCount: UInt64?
+    private var frozenWatchSince = Date()
+    private var frozenThawed = false
     func launchFailed() { if current != nil && !sawProcess { finish(); error = "The session could not start. Check the diagnostic log and JIT status." } }
     /// ml1420: the starting screen could stay visible (and unresponsive) after
     /// the game was presenting. The animated removal of a scrolling view with
@@ -542,7 +862,7 @@ final class LibraryModel: ObservableObject {
             launchDismissLogged = true
             fputs("[launch-view] ml1420 dismissed reason=\(reason) logs=\(launchLogs ? 1 : 0) instant=\(instant ? 1 : 0)\n", stderr)
         }
-        if launchLogs { LogStore.shared.setDisplayActive(liveLogs) }
+        LogStore.shared.setDisplayActive(liveLogs)
         if instant {
             var transaction = Transaction(); transaction.disablesAnimations = true
             withTransaction(transaction) { launchLogs = false; launching = false }
@@ -553,9 +873,431 @@ final class LibraryModel: ObservableObject {
     }
     func toggleLaunchLogs() {
         launchLogs.toggle()
-        LogStore.shared.setDisplayActive(liveLogs || launchLogs)
+        LogStore.shared.setDisplayActive(launching ? launchLogs : liveLogs)
         fputs("[startup-log] ml1180 visible=\(launchLogs ? 1 : 0)\n", stderr)
     }
+
+    // MARK: ml1490 — starting screen over the Windows Steam client
+
+    /// A game started through the Windows Steam client is a desktop session, and
+    /// the desktop's first frame (the client's console and helper windows) used
+    /// to end the starting screen. Now it stays, with the client's download
+    /// progress, until a window of the started game is up; a client window the
+    /// user may have to answer (sign-in, an error) reveals the desktop, and
+    /// "Show Steam" reveals it on request. Which window is which comes from
+    /// Winios.m's census (owning program per top-level window), decided by
+    /// SteamLaunchScene. MADEIRA_STEAM_HIDE_DESKTOP=0 restores the old
+    /// behaviour; MADEIRA_STEAM_AUTO_REVEAL=0 keeps only the button.
+    /// [steam-launch-view] ml1490 logs the hold, scene changes and reveals.
+    private func beginSteamHold(_ entry: LibraryEntry) {
+        endSteamHold(reason: nil)
+        guard entry.steamGameLaunch, LibraryFlags.enabled("MADEIRA_STEAM_HIDE_DESKTOP") else { return }
+        let hold = SteamLaunchHold(autoReveal: LibraryFlags.enabled("MADEIRA_STEAM_AUTO_REVEAL"))
+        steamHold = hold; steamSceneLines = 0; steamHolding = true
+        winios_window_census_enable(1)
+        LogStore.shared.log("[steam-launch-view] ml1490 hold app=\(entry.steamAppID ?? 0) auto-reveal=\(hold.autoReveal ? 1 : 0)")
+    }
+
+    private func endSteamHold(reason: String?) {
+        guard steamHold != nil || steamHolding else { return }
+        if let reason, let hold = steamHold {
+            LogStore.shared.log("[steam-launch-view] ml1490 end reason=\(reason) scene=\(hold.scene.name) revealed=\(hold.revealed ? 1 : 0) t=\(Int(Date().timeIntervalSince(launchStarted)))s")
+        }
+        steamHold = nil
+        steamHolding = false; steamAttention = false
+        winios_window_census_enable(0)
+    }
+
+    /// Winios.m's census as SteamLaunchScene reads it.
+    private static func censusWindows() -> [SteamLaunchWindow] {
+        var raw = [winios_census_window](repeating: winios_census_window(), count: Int(WINIOS_CENSUS_MAX))
+        let count = Int(winios_window_census(&raw, Int32(raw.count)))
+        return raw.prefix(max(0, min(count, raw.count))).map { window in
+            let image = withUnsafeBytes(of: window.image) { raw in String(decoding: raw.prefix { $0 != 0 }, as: UTF8.self) }
+            return SteamLaunchWindow(image: image, width: Int(window.w), height: Int(window.h), visible: window.visible != 0,
+                                     drawn: window.presents > 0 || window.metal != 0, pid: window.pid)
+        }
+    }
+
+    private func pollSteamHold() {
+        guard var hold = steamHold else { return }
+        let elapsed = Date().timeIntervalSince(launchStarted)
+        let windows = Self.censusWindows()
+        // D3D frames stand in only for a window whose owner could not be read.
+        let decision = SteamLaunchScene.decide(windows, rendered: madeira_get_present_count() >= launchPresent + 3)
+        if decision.scene != hold.scene, steamSceneLines < 24 {
+            steamSceneLines += 1
+            let window = decision.window.map { " window=\($0.width)x\($0.height) owner=\(SteamLaunchScene.owner($0.image).rawValue) pid=\(String($0.pid, radix: 16))" } ?? ""
+            LogStore.shared.log("[steam-launch-view] ml1490 scene=\(decision.scene.name) shown=\(windows.filter(\.visible).count)\(window) t=\(Int(elapsed))s")
+        }
+        let action = hold.step(decision.scene, now: elapsed)
+        steamHold = hold
+        switch action {
+        case .none:
+            break
+        case .showGame:
+            endSteamHold(reason: "game-window")
+            // ml1510: the client can now yield the performance cores to the game.
+            madeira_set_background_qos(1)
+            if launching { showGameView(reason: "game-window") }
+            return
+        case .reveal:
+            LogStore.shared.log("[steam-launch-view] ml1490 reveal reason=steam-window count=\(hold.autoReveals) t=\(Int(elapsed))s")
+            if launching { showGameView(reason: "steam-window") }
+        case .cover:
+            // The client window was answered; back to the starting screen.
+            LogStore.shared.log("[steam-launch-view] ml1490 cover reason=steam-window-closed t=\(Int(elapsed))s")
+            InputGuard.shared.releaseAll("steam-launch-cover")
+            LibraryKeyboard.hide(); menu = false
+            var transaction = Transaction(); transaction.disablesAnimations = true
+            withTransaction(transaction) { launching = true }
+        }
+        if steamAttention != hold.needsAttention { steamAttention = hold.needsAttention }
+    }
+
+    /// "Show Steam" on the starting screen: the desktop stays until the game's window is up.
+    func showSteam() {
+        guard var hold = steamHold else { return }
+        // ml1530: tapped before the client has a window, the hold remembers it and reveals the
+        // window when it appears. MADEIRA_STEAM_SHOW_WAITS=0 shows the desktop at once as before.
+        // ml1720: shows the desktop at once, every time: a tap that only queued a reveal read as a
+        // dead button (device logs: dozens of taps, nothing on screen). MADEIRA_STEAM_SHOW_WAITS=1
+        // waits for the client's window as ml1530 did.
+        let now = hold.showSteam(waitForWindow: LibraryFlags.enabled("MADEIRA_STEAM_SHOW_WAITS", fallback: false))
+        steamHold = hold
+        guard now else {
+            if hold.pendingReveal {
+                LogStore.shared.log("[steam-launch-view] ml1530 show-steam waits for the client's window t=\(Int(Date().timeIntervalSince(launchStarted)))s")
+            }
+            return
+        }
+        steamAttention = false
+        LogStore.shared.log("[steam-launch-view] ml1490 reveal reason=button scene=\(hold.scene.name) t=\(Int(Date().timeIntervalSince(launchStarted)))s")
+        showGameView(reason: "show-steam")
+    }
+    // MARK: ml1780 Steam's one-time installs
+
+    /// The game's install folder: the recorded one, else the steamapps/common/<dir> its
+    /// executable is in.
+    static func steamInstallFolder(_ entry: LibraryEntry) -> URL? {
+        if let path = entry.steamInstallPath, let folder = SteamPaths.safeRelative(path, under: drive) { return folder }
+        let parts = entry.relativePath.split(separator: "/").map(String.init)
+        guard let common = parts.lastIndex(where: { $0.lowercased() == "common" }), common + 1 < parts.count - 1 else { return nil }
+        return SteamPaths.safeRelative(parts[...(common + 1)].joined(separator: "/"), under: drive)
+    }
+
+    /// Marks the game's one-time installs done in the prefix's registry; only while no
+    /// session runs. Returns the number of install entries found (0: no install script).
+    @discardableResult
+    static func markSteamInstallers(_ entry: LibraryEntry, reason: String) -> Int {
+        let app = entry.steamAppID ?? 0
+        guard let folder = steamInstallFolder(entry) else {
+            LogStore.shared.log("[steam-installers] ml1780 app=\(app) reason=\(reason) no install folder"); return 0
+        }
+        let runs = SteamInstallScripts.runs(installFolder: folder)
+        var written = 0
+        do { written = try SteamInstallScripts.mark(runs, prefix: drive.deletingLastPathComponent()) }
+        catch { LogStore.shared.log("[steam-installers] ml1780 app=\(app) write failed: \(error.localizedDescription)", level: .error) }
+        LogStore.shared.log("[steam-installers] ml1780 app=\(app) reason=\(reason) entries=\(runs.count) names=\(runs.map(\.name).joined(separator: ",")) written=\(written)")
+        return runs.count
+    }
+
+    /// ml1970: a Madeira Dock start. Valve's client never evaluates install scripts on this route
+    /// (see DockInstallScripts), so Madeira does: runtimes its Wine provides are marked done, and
+    /// the other programs not yet recorded done go into a batch the session runs before the host.
+    /// "Run Steam's one-time installs" (steamRunInstallers) also queues the provided ones.
+    /// Only while no session runs. MADEIRA_DOCK_INSTALLERS=0 restores ml1780's marking.
+    /// ml2013 (device logs 97-100: 1 of a script's 3 programs found, none run, nothing said why):
+    /// entries without a "HasRunKey" use Steam's per-app key (MADEIRA_INSTALL_DEFAULT_KEY=0: skipped
+    /// again); every program's fate is logged and shown on the start screen, and the batch reports
+    /// each exit status (MADEIRA_DOCK_INSTALL_REPORT=0: the ml1970 batch, one summary line); after an
+    /// uninstall the installs are evaluated again, runs Madeira only marked done run when "run all"
+    /// is on, and that choice survives the reinstall (MADEIRA_DOCK_INSTALL_RESET=0: none of this).
+    static func prepareDockInstallers(_ entry: LibraryEntry) {
+        MadeiraDock.installerScript = nil
+        MadeiraDock.installerServicesStep = false
+        MadeiraDock.installerSessionFastsync = false
+        MadeiraDock.installerNote = nil
+        MadeiraDock.resetInstallerProgress()
+        let app = entry.steamAppID ?? 0
+        let defaultKey = LibraryFlags.enabled("MADEIRA_INSTALL_DEFAULT_KEY")
+        let report = LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_REPORT")
+        let resetOn = LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_RESET")
+        let prefix = drive.deletingLastPathComponent()
+        let batchURL = drive.appendingPathComponent(MadeiraDock.installerScriptName)
+        try? FileManager.default.removeItem(at: batchURL)
+        if report { absorbDockInstallerResults(reason: "next-start") }
+        try? FileManager.default.removeItem(at: drive.appendingPathComponent(MadeiraDock.installerResultName))
+        guard let folder = steamInstallFolder(entry), let gameRelative = SteamPaths.relative(folder, drive: drive) else {
+            LogStore.shared.log("[dock-installers] ml1970 app=\(app) no install folder"); return
+        }
+        func windows(_ relative: String) -> String { "C:\\" + relative.replacingOccurrences(of: "/", with: "\\") }
+        let shared = folder.deletingLastPathComponent().appendingPathComponent("Steamworks Shared", isDirectory: true)
+        var found: [SteamInstallProcess] = []
+        var roots: [(URL, Int, String, Int?)] = [(folder, 1, windows(gameRelative), defaultKey && app > 0 ? app : nil)]
+        if let sharedRelative = SteamPaths.relative(shared, drive: drive) {
+            roots.append((shared.appendingPathComponent("_CommonRedist", isDirectory: true), 3, windows(sharedRelative), nil))
+        }
+        var scripts = 0
+        for (root, depth, installDir, owner) in roots {
+            for file in SteamInstallScripts.scripts(folder: root, depth: depth) {
+                guard let data = try? Data(contentsOf: file) else { continue }
+                scripts += 1
+                for process in DockInstallScripts.processes(script: data, installDir: installDir, appID: owner) where !found.contains(process) {
+                    found.append(process)
+                }
+            }
+        }
+        var runAll = entry.steamRunInstallers == true
+        var ledger = resetOn || report ? SteamInstallLedger.load(prefix: prefix) : SteamInstallLedger()
+        // ml2013: the first start after an uninstall: Steam's per-app records and the marks Madeira
+        // wrote itself are cleared, so the new install's programs are evaluated again.
+        if resetOn, let carried = ledger.reset[String(app)] {
+            let appKey = SteamInstallScripts.defaultRunKey(appID: app).lowercased()
+            var clear = found.map(\.run).filter { $0.hive == .machine && $0.key.lowercased() == appKey }
+            for run in ledger.marked[String(app)] ?? [] where !clear.contains(run) { clear.append(run) }
+            var removed = 0
+            do { removed = try SteamInstallScripts.unmark(clear, prefix: prefix) }
+            catch { LogStore.shared.log("[dock-installers] ml2013 app=\(app) reset failed: \(error.localizedDescription)", level: .error) }
+            ledger.marked[String(app)] = nil
+            ledger.reset[String(app)] = nil
+            if carried && !runAll {
+                runAll = true
+                if var stored = LibraryModel.shared.entries.first(where: { $0.id == entry.id }) { stored.steamRunInstallers = true; LibraryModel.shared.save(stored) }
+            }
+            LogStore.shared.log("[dock-installers] ml2013 app=\(app) reinstall-reset values-removed=\(removed) run-all-restored=\(carried ? 1 : 0)")
+        }
+        let registry = [SteamInstallRun.Hive.machine: "system.reg", .user: "user.reg"].mapValues {
+            (try? String(contentsOf: prefix.appendingPathComponent($0), encoding: .utf8)) ?? ""
+        }
+        // With "run all", a runtime Madeira only recorded done (never ran) counts as not done.
+        func done(_ run: SteamInstallRun) -> Bool {
+            DockInstallScripts.marked(run, in: registry[run.hive] ?? "") && !(resetOn && runAll && ledger.madeiraMarked(run, app: app))
+        }
+        func exists(_ windowsPath: String) -> Bool {
+            let relative = windowsPath.dropFirst(3).replacingOccurrences(of: "\\", with: "/")
+            guard let url = SteamPaths.safeRelative(relative, under: drive) else { return false }
+            return SteamPaths.existing(url, drive: drive) != nil
+        }
+        // A run is marked done up front only when every program in it is provided by Madeira.
+        let items = DockInstallScripts.plan(found, runAll: runAll, done: done, exists: exists)
+        var provided: [SteamInstallRun] = []
+        for item in items where item.status == .provided && !provided.contains(item.process.run) { provided.append(item.process.run) }
+        let newlyProvided = provided.filter { !DockInstallScripts.marked($0, in: registry[$0.hive] ?? "") }
+        var written = 0
+        do { written = try SteamInstallScripts.mark(provided, prefix: prefix) }
+        catch { LogStore.shared.log("[dock-installers] ml1970 app=\(app) mark failed: \(error.localizedDescription)", level: .error) }
+        if resetOn { ledger.record(newlyProvided, app: app) }
+        var pending = items.filter { $0.status == .pending }.map(\.process)
+        // ml2015 (owner request): game details › One-time installs. A fresh install (nil) or
+        // "Run at next start" (true) runs them at this start, after which the choice becomes
+        // Skip (false); Skip starts the game without them. MADEIRA_DOCK_INSTALL_CHOICE=0 ignores it.
+        let choiceOn = LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_CHOICE")
+        let skipped = choiceOn && entry.steamInstallersNext == false && !pending.isEmpty
+        if skipped {
+            LogStore.shared.log("[dock-installers] ml2015 app=\(app) choice=skip pending=\(pending.count) (game details › One-time installs)")
+            pending = []
+        } else if choiceOn && !pending.isEmpty,
+                  var stored = LibraryModel.shared.entries.first(where: { $0.id == entry.id }) {
+            stored.steamInstallersNext = false
+            LibraryModel.shared.save(stored)
+            LogStore.shared.log("[dock-installers] ml2015 app=\(app) choice=run pending=\(pending.count); next start skips them")
+        }
+        // ml2014 (device log 103: an installer found no service manager in the Dock session, and
+        // a provided runtime's failed setup was retried at every start): the batch first makes
+        // Wine's service manager reachable (MADEIRA_DOCK_INSTALL_SCM=0: "services off"), and a
+        // provided runtime queued by "run all" that fails is recorded done
+        // (MADEIRA_DOCK_INSTALL_PROVIDED_FALLBACK=0: retried as in ml2013). Both need the report batch.
+        // ml2015 (device log 111): with the madsync engine, services.exe's RPC server never
+        // answered, and the service step (then every installer) waited forever; msiexec's custom
+        // actions use the same RPC server. A start that runs one-time installs therefore uses
+        // fastsync for its whole session; later starts use the chosen engine.
+        // MADEIRA_DOCK_INSTALL_FASTSYNC=0 keeps madsync and leaves the service step out instead.
+        let madsync = MadeiraConfig.bool("inproc-sync") && MadeiraConfig.get("env.MADEIRA_FASTSYNC") == "0"
+        let forceFast = madsync && !pending.isEmpty && LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_FASTSYNC")
+        let scmOK = !madsync || forceFast
+        let services: DockInstallServices = LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_SCM") && scmOK ? .start(MadeiraDock.executable) : .off
+        if madsync && !pending.isEmpty {
+            LogStore.shared.log("[dock-installers] ml2015 app=\(app) engine=madsync session-engine=\(forceFast ? "fastsync" : "madsync") services-step=\(scmOK ? "start" : "off")")
+        }
+        let fallback = LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_PROVIDED_FALLBACK") ? DockInstallScripts.providedRuns(found) : []
+        if !pending.isEmpty {
+            do {
+                let text = report ? DockInstallScripts.batch(pending, resultFile: "C:\\" + MadeiraDock.installerResultName,
+                                                             services: services, providedFallback: fallback)
+                                  : DockInstallScripts.batch(pending)
+                try Data(text.utf8).write(to: batchURL, options: .atomic)
+                MadeiraDock.installerScript = "C:\\" + MadeiraDock.installerScriptName
+                MadeiraDock.installerServicesStep = report && services != .off
+                MadeiraDock.installerSessionFastsync = forceFast
+            } catch {
+                LogStore.shared.log("[dock-installers] ml1970 app=\(app) batch write failed: \(error.localizedDescription)", level: .error)
+            }
+        }
+        if resetOn || report {
+            ledger.session = report && MadeiraDock.installerScript != nil ? pending.map(\.run) : []
+            ledger.sessionApp = ledger.session.isEmpty ? 0 : app
+            do { try ledger.save(prefix: prefix) }
+            catch { LogStore.shared.log("[dock-installers] ml2013 app=\(app) ledger write failed: \(error.localizedDescription)", level: .error) }
+        }
+        if report {
+            for item in items {
+                let run = item.process.run
+                let recorded = DockInstallScripts.recorded(run, in: registry[run.hive] ?? "").map { String($0) } ?? "-"
+                let file = item.process.executable.split(separator: "\\").last.map(String.init) ?? ""
+                let hive = run.hive == .machine ? "HKLM" : "HKCU"
+                let label = DockInstallScripts.label(run)
+                LogStore.shared.log("[dock-installers] ml2013 app=\(app) program=\(label) file=\(file) status=\(item.status.rawValue) " +
+                                    "key=\(hive)\\\(run.key) recorded=\(recorded) minimum=\(run.value)")
+            }
+            // Shown when something runs or is missing, or when Madeira first records runtimes as
+            // provided (a first start, a reinstall); a start where all is done stays quiet (ml1990).
+            MadeiraDock.installerNote = DockInstallScripts.note(items, runAll: runAll, announceProvided: !newlyProvided.isEmpty)
+            if skipped {
+                MadeiraDock.installerNote = "One-time installs skipped. To run them, choose Run at next start under One-time installs in the game's details."
+            } else if forceFast {
+                MadeiraDock.installerNote = (MadeiraDock.installerNote.map { $0 + " " } ?? "") +
+                    "This start uses Fastsync for the installers; your Madsync setting applies again from the next start."
+            }
+        }
+        var detail = ""
+        if report {
+            let doneCount = items.filter { $0.status == .done }.count
+            let missingCount = items.filter { $0.status == .missing }.count
+            detail = " scripts=\(scripts) done=\(doneCount) missing=\(missingCount) default-key=\(defaultKey ? 1 : 0)"
+        }
+        if report && MadeiraDock.installerScript != nil {
+            let eligible = pending.filter { fallback.contains($0.run) }.count
+            LogStore.shared.log("[dock-installers] ml2014 app=\(app) services-step=\(services == .off ? "off" : "start") provided-fallback=\(eligible)")
+            // ml2014: DirectX setup's Managed DirectX step loads fusion.dll from the .NET 2.0
+            // framework folder through mscoree's LoadLibraryShim. Wine normally gets that file
+            // from its Mono package, which Madeira does not ship, so setup ended with -9. Place
+            // Wine's own builtin fusion.dll there (only when missing) before a DirectX run.
+            // MADEIRA_DOTNET_FUSION=0 leaves the folder alone.
+            if pending.contains(where: { DockInstallScripts.providedRuntime($0) == "DirectX" }),
+               LibraryFlags.enabled("MADEIRA_DOTNET_FUSION") {
+                LogStore.shared.log("[dock-installers] ml2014 app=\(app) dotnet-fusion=\(placeDotNetFusion())")
+            }
+        }
+        let names = pending.map(\.run.name).joined(separator: ",")
+        LogStore.shared.log("[dock-installers] ml1970 app=\(app) programs=\(found.count) provided=\(provided.count) marked=\(written) " +
+                            "pending=\(pending.count) run-all=\(runAll ? 1 : 0) names=\(names)" + detail)
+    }
+
+    /// ml2014: copies the bundled 32-bit Wine fusion.dll into the prefix's .NET 2.0 framework
+    /// folder when it is missing. Returns "placed", "present", "no-source" or "failed".
+    static func placeDotNetFusion() -> String {
+        let fm = FileManager.default
+        let folder = drive.appendingPathComponent("windows/Microsoft.NET/Framework/v2.0.50727", isDirectory: true)
+        let target = folder.appendingPathComponent("fusion.dll")
+        if fm.fileExists(atPath: target.path) { return "present" }
+        guard let source = Bundle.main.resourceURL?.appendingPathComponent("i386-windows/fusion.dll"),
+              fm.fileExists(atPath: source.path) else { return "no-source" }
+        do {
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            try fm.copyItem(at: source, to: target)
+            return "placed"
+        } catch { return "failed" }
+    }
+
+    /// ml2013: the batch's exit statuses, read back after the session (or at the next start):
+    /// one summary line; runs that succeeded are no longer counted as only marked by Madeira.
+    static func absorbDockInstallerResults(reason: String) {
+        let prefix = drive.deletingLastPathComponent()
+        let url = drive.appendingPathComponent(MadeiraDock.installerResultName)
+        var ledger = SteamInstallLedger.load(prefix: prefix)
+        guard !ledger.session.isEmpty else { return }
+        let app = ledger.sessionApp
+        if let data = try? Data(contentsOf: url), data.count <= 16384 {
+            let results = DockInstallScripts.results(String(decoding: data, as: UTF8.self))
+            var succeeded: [SteamInstallRun] = []
+            var providedAfterFailure: [SteamInstallRun] = []
+            var statuses: [String] = []
+            for (offset, run) in ledger.session.enumerated() {
+                let index = offset + 1, name = DockInstallScripts.label(run)
+                if let status = results.exits[index] {
+                    if DockInstallScripts.Results.succeeded(status) { succeeded.append(run); statuses.append("\(name)=\(status)") }
+                    else if results.providedAfterFailure(index) {
+                        // ml2014: recorded done by the batch; no longer counted as only marked.
+                        providedAfterFailure.append(run); statuses.append("\(name)=\(status)/provided-after-failure")
+                    } else { statuses.append("\(name)=\(status)") }
+                } else {
+                    statuses.append("\(name)=\(results.started[index] != nil ? "unfinished" : "not-started")")
+                }
+            }
+            ledger.forget(succeeded + providedAfterFailure, app: app)
+            let failed = ledger.session.count - succeeded.count - providedAfterFailure.count
+            LogStore.shared.log("[dock-installers] ml2013 app=\(app) results reason=\(reason) succeeded=\(succeeded.count) failed=\(failed) " +
+                                "provided-after-failure=\(providedAfterFailure.count) services=\(results.services ?? "-") " +
+                                "ended=\(results.ended ? 1 : 0) statuses=\(statuses.joined(separator: ","))", level: failed > 0 ? .error : .info)
+        } else {
+            LogStore.shared.log("[dock-installers] ml2013 app=\(app) results reason=\(reason) none: the batch did not start", level: .error)
+        }
+        try? FileManager.default.removeItem(at: url)
+        ledger.session = []; ledger.sessionApp = 0
+        try? ledger.save(prefix: prefix)
+    }
+
+    /// ml2013: called when Madeira removes a Steam install; the next start evaluates the game's
+    /// one-time installs again and keeps the removed entry's "run all" choice.
+    static func requestDockInstallerReset(appID: Int, runAll: Bool) {
+        guard LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_RESET"), appID > 0 else { return }
+        let prefix = drive.deletingLastPathComponent()
+        var ledger = SteamInstallLedger.load(prefix: prefix)
+        ledger.reset[String(appID)] = runAll || ledger.reset[String(appID)] == true
+        do { try ledger.save(prefix: prefix) }
+        catch { LogStore.shared.log("[dock-installers] ml2013 app=\(appID) reset request failed: \(error.localizedDescription)", level: .error); return }
+        LogStore.shared.log("[dock-installers] ml2013 app=\(appID) reset requested run-all=\(runAll ? 1 : 0)")
+    }
+
+    /// Set by "Skip one-time installs": the library marks the installs once the session has ended.
+    @Published var relaunchRequest: LibraryEntry?
+    @Published private(set) var skippingInstallers = false
+
+    /// ml1790: Wine sessions started in this app run. A second one cannot start in the same
+    /// process: the wineserver's permanent objects from the first session are still there and
+    /// init_registry aborts on "\Registry" (device log 52, `Assertion failed: (root_key)`; no
+    /// log has ever shown a second session start). Madeira asks for a restart instead.
+    /// MADEIRA_ONE_SESSION_PER_RUN=0 lets the launch go ahead as before.
+    static var sessionsThisRun = 0
+    static let restartMessage = "Restart Madeira to start another game: swipe Madeira away in the app switcher, then open it again."
+    @Published var restartNotice: String?
+
+    /// "Skip one-time installs" on the starting screen: ends the session; once it has ended the
+    /// installs are marked done (the registry can only be written between sessions) and
+    /// Madeira asks for a restart, after which Play starts without them.
+    func skipSteamInstallers() {
+        guard var entry = activeEntry, entry.steamGameLaunch, !skippingInstallers else { return }
+        guard let folder = Self.steamInstallFolder(entry), !SteamInstallScripts.runs(installFolder: folder).isEmpty else {
+            LogStore.shared.log("[steam-installers] ml1780 skip tapped but no install script was found app=\(entry.steamAppID ?? 0)")
+            sessionMessage = "Madeira could not find this game's install script. Use Show Steam to answer its installers."
+            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { [weak self] in self?.sessionMessage = "" }
+            return
+        }
+        if var stored = entries.first(where: { $0.id == entry.id }), stored.steamRunInstallers == true {
+            stored.steamRunInstallers = nil; save(stored)
+        }
+        entry.steamRunInstallers = nil
+        skippingInstallers = true
+        pendingRelaunch = entry
+        LogStore.shared.log("[steam-installers] ml1790 skip tapped app=\(entry.steamAppID ?? 0) t=\(Int(Date().timeIntervalSince(launchStarted)))s; ending the session")
+        requestQuit()
+        sessionMessage = "Closing Steam to skip the one-time installs…"
+    }
+    private var pendingRelaunch: LibraryEntry?
+
+    /// ml2015 (owner request): "Skip one-time installs" while a Madeira Dock start runs them.
+    /// The game's One-time installs choice becomes Skip and the session ends; one session per
+    /// run, so Madeira then asks for a restart, after which Play starts without them.
+    func skipDockInstallers() {
+        guard let entry = activeEntry, dockLaunching, !skippingInstallers else { return }
+        if var stored = entries.first(where: { $0.id == entry.id }) { stored.steamInstallersNext = false; save(stored) }
+        skippingInstallers = true
+        LogStore.shared.log("[dock-installers] ml2015 skip tapped app=\(entry.steamAppID ?? 0) t=\(Int(Date().timeIntervalSince(launchStarted)))s; ending the session")
+        requestQuit()
+        restartNotice = "The one-time installs are skipped for this game. " + Self.restartMessage + " Then tap Play."
+    }
+
     func setFPS(_ mode: Int) {
         fpsMode = mode; madeira_set_vsync_locked(Int32(mode))
         ProMotionIntent.shared.setActive(true, maxHz: ProMotionIntent.maxHz(for: Int32(mode)))
@@ -570,6 +1312,7 @@ final class LibraryModel: ObservableObject {
     }
     func requestQuit() {
         LibraryKeyboard.hide()
+        quitRequested = true
         if wineserver_request_session_stop() != 0 {
             InputGuard.shared.releaseAll("frontend-quit")
             sessionMessage = "Closing…"; menu = false
@@ -591,18 +1334,36 @@ final class LibraryModel: ObservableObject {
         if let id = current, var entry = entries.first(where: { $0.id == id }) {
             entry.controls = controls.controls; entry.controlSize = controls.sizeScale
             entry.touchControls = controls.visible; entry.controlOpacity = opacity
+            if ControlPresetsModel.enabled { entry.controlLayout = ControlPresetsModel.shared.activeID }
             entry.fpsMode = fpsMode; entry.performance = performance
             if LibraryFlags.enabled("MADEIRA_SESSION_TOOLS") { entry.display = InputSettings.shared.displayMode.rawValue }
             entry.overlayFields = overlayFields; save(entry)
         }
     }
     private func finish() {
+        // The legacy timer/session callbacks run on the main queue. Keep the
+        // credential-file lifecycle in that same isolation domain.
+        let dockError = MainActor.assumeIsolated {
+            let message = dockLaunching ? MadeiraDock.finishReport() : nil
+            MadeiraDock.cleanup()
+            // ml2013: the one-time installs' exit statuses, logged as the Dock session ends.
+            if dockLaunching && MadeiraDock.installerScript != nil && LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_REPORT") {
+                _ = MadeiraDock.pollInstallers()
+                Self.absorbDockInstallerResults(reason: "session-end")
+            }
+            return message
+        }
+        if let dockError { error = dockError } else if sawProcess, let report = exitReport() { error = report }
+        dockLaunching = false
         timer?.invalidate(); timer = nil
         SteamClientProgressModel.shared.stop()
+        endSteamHold(reason: "session-ended")
+        madeira_set_background_qos(0)   // ml1510
         saveCurrentProfile()
         let controls = TouchControlsModel.shared
         InputGuard.shared.releaseAll("frontend-exit")
         controls.controls = savedControls; controls.visible = savedVisible; controls.sizeScale = savedSize
+        HardwareInput.shared.releaseReservedPadSlot()   // ml1990
         InputSettings.shared.displayMode = savedDisplay
         current = nil; activeEntry = nil; menu = false; sessionMessage = ""
         LogStore.shared.setDisplayActive(true)
@@ -610,6 +1371,8 @@ final class LibraryModel: ObservableObject {
         LibraryController.shared.configure(enabled: enabled, ownsInput: enabled)
         FullscreenState.shared.active = false; MetalHostView.shared.isHidden = true
         ProMotionIntent.shared.setActive(false)
+        skippingInstallers = false
+        if let entry = pendingRelaunch { pendingRelaunch = nil; relaunchRequest = entry }   // ml1780
         fputs("[frontend] ml1140 returned to library\n", stderr)
     }
 }
@@ -798,10 +1561,15 @@ struct LibraryArtwork: View {
                 Image(uiImage: image).resizable().scaledToFill()
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center).clipped()
             } else if let id = entry.steamID {
-                AsyncImage(url: backdrop ? URL(string: "https://cdn.cloudflare.steamstatic.com/steam/apps/\(id)/library_hero.jpg") : SteamCatalog.cover(id)) { image in
-                    image.resizable().scaledToFill()
+                if LibraryFlags.enabled("MADEIRA_STEAM_ARTWORK") {
+                    SteamArtworkImage(id: id, backdrop: backdrop)
                         .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center).clipped()
-                } placeholder: { Color.clear }
+                } else {
+                    AsyncImage(url: backdrop ? URL(string: "https://cdn.cloudflare.steamstatic.com/steam/apps/\(id)/library_hero.jpg") : SteamCatalog.cover(id)) { image in
+                        image.resizable().scaledToFill()
+                            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .center).clipped()
+                    } placeholder: { Color.clear }
+                }
             }
         }
         .frame(width: geometry.size.width, height: geometry.size.height)
@@ -821,8 +1589,13 @@ struct LibraryBadges: View {
     private var format: some View {
         HStack(spacing: 4) {
             if entry.bits == 32 || entry.bits == 64 { badge("\(entry.bits)-bit") }
-            if let api = LibraryFlags.enabled("MADEIRA_COMPACT_API_BADGE") ? LibraryRendererBadge.compact(entry.graphicsAPI) : entry.graphicsAPI { badge(api) }
-            if entry.steamAppID != nil { badge(entry.steamInstalled == false ? "Not installed" : "Steam") }
+            // ml1780: MADEIRA_API_BADGE_STRICT=0 shows the highest API found again.
+            if let api = LibraryFlags.enabled("MADEIRA_COMPACT_API_BADGE")
+                ? LibraryRendererBadge.compact(entry.graphicsAPI, strict: LibraryFlags.enabled("MADEIRA_API_BADGE_STRICT")) : entry.graphicsAPI { badge(api) }
+            // ml1970: no "Steam" pill on installed games (MADEIRA_STEAM_BADGE=1 restores it).
+            if entry.steamAppID != nil, entry.steamInstalled == false || LibraryFlags.enabled("MADEIRA_STEAM_BADGE", fallback: false) {
+                badge(entry.steamInstalled == false ? "Not installed" : "Steam")
+            }
             if SteamAccountModel.enabled && SteamAccountModel.shared.updateAvailable(for: entry) { badge("Update") }
         }
     }
@@ -872,6 +1645,9 @@ struct LibraryView: View {
     @ObservedObject private var controller = LibraryController.shared
     @ObservedObject private var input = InputSettings.shared
     @State private var tab = 0
+    // ml1520: the interface the next start uses (FrontendChoice).
+    @State private var developerUI = !FrontendChoice.preferNew
+    @State private var restartNotice = false
     @AppStorage("madeiraLibraryLayout") private var layout = "cards"
     @AppStorage("madeiraLibrarySort") private var sort = "played"
     private let refinements = LibraryFlags.enabled("MADEIRA_LIBRARY_REFINEMENTS")
@@ -881,8 +1657,18 @@ struct LibraryView: View {
     @State private var steamSignIn = false
     @State private var steamGame: SteamGameRef?
     @AppStorage("madeiraSteamShowUninstalled") private var showUninstalled = true
+    // ml1990: collapsed state of the installed Steam and Other games sections.
+    @AppStorage("madeiraLibraryHideInstalled") private var hideInstalled = false
+    @AppStorage("madeiraLibraryHideOthers") private var hideOthers = false
+    private let collapsibleSections = LibraryFlags.enabled("MADEIRA_LIBRARY_COLLAPSE")
     private let nativeSteam = SteamAccountModel.enabled
     private let sectioned = SteamAccountModel.enabled && LibraryFlags.enabled("MADEIRA_LIBRARY_SECTIONS")
+    // ml1530: first-run setup (Onboarding.swift) and the Windows Steam client's button.
+    @ObservedObject private var onboarding = OnboardingModel.shared
+    @ObservedObject private var steamClient = SteamLibraryModel.shared
+    // ml1970: hidden by default now that Madeira Dock starts games; regular Steam stays in
+    // Settings › Windows Steam client. MADEIRA_LIBRARY_STEAM_BUTTON=1 shows it again.
+    private let steamButton = LibraryFlags.enabled("MADEIRA_STEAM") && LibraryFlags.enabled("MADEIRA_LIBRARY_STEAM_BUTTON", fallback: false)
     struct SteamGameRef: Identifiable { let id: Int }
     private enum Cell: Identifiable {
         case entry(LibraryEntry), owned(SteamOwnedGame)
@@ -933,7 +1719,7 @@ struct LibraryView: View {
             }.padding(.bottom, 5).padding(.top, 8)
         }
         .sheet(isPresented: $steamManager) { SteamLibraryView(play: { profile in steamManager = false; play(profile) }, enableJIT: enableJIT) }
-        .sheet(isPresented: $steamSignIn) { SteamSignInView() }
+        .sheet(isPresented: $steamSignIn) { SteamAccountSignInView() }
         .sheet(item: $steamGame) { ref in
             SteamGameSheet(appID: ref.id) { entry in
                 // Let the download sheet finish dismissing before presenting details.
@@ -943,19 +1729,31 @@ struct LibraryView: View {
         .alert("Steam", isPresented: Binding(get: { steam.error != nil }, set: { if !$0 { steam.error = nil } })) {
             Button("OK", role: .cancel) { steam.error = nil }
         } message: { Text(steam.error ?? "") }
+        .fullScreenCover(isPresented: $onboarding.presented) { OnboardingView(play: play, enableJIT: enableJIT) }
+        .onAppear {
+            // ml1530: an ended desktop session's surface never stays over the library.
+            EndedSessionSurface.install(); EndedSessionSurface.hide(reason: "library-appeared")
+            onboarding.presentIfNeeded()
+        }
         .task { await SteamLibraryModel.shared.refresh() }
         .task { steam.start() }
         .onChange(of: model.current) { _, current in
-            steam.sessionChanged(active: current != nil)
-            if current == nil { Task { await SteamLibraryModel.shared.refresh() } }
+            guard current == nil else { steam.sessionChanged(active: true); return }
+            Task {
+                // ml1530: a Steam folder set aside for the installer returns before downloads resume into it.
+                await SteamLibraryModel.shared.restorePendingInstallFolder()
+                steam.sessionChanged(active: false)
+                await SteamLibraryModel.shared.refresh()
+            }
         }
         .onChange(of: scenePhase) { _, phase in if phase == .active { Task { await SteamLibraryModel.shared.refresh() } } }
         .onAppear { fputs("[steam-bridge] ml1260 enabled=\(LibraryFlags.enabled("MADEIRA_STEAM") ? 1 : 0) compact-badges=\(LibraryFlags.enabled("MADEIRA_COMPACT_API_BADGE") ? 1 : 0)\n", stderr) }
         .onAppear { fputs("[frontend-layout] ml1190 full-height native tab symbols and metadata=\(refinements ? 1 : 0)\n", stderr) }
         // LogStore: stderr is not captured before a Wine session starts.
         .onAppear { LogStore.shared.log("[library-sections] ml1310 native-steam=\(nativeSteam ? 1 : 0) sections=\(sectioned ? 1 : 0)") }
+        .onAppear { LogStore.shared.log("[ui-details] ml1520 Steam start choice under library details; no display-modes toggle") }
         .onReceive(controller.commands) { command in
-            if selected == nil, !browser, !steamManager, !steamSignIn, steamGame == nil, command == "tab" { tab = 1 - tab }
+            if selected == nil, !browser, !steamManager, !steamSignIn, steamGame == nil, !onboarding.presented, command == "tab" { tab = 1 - tab }
         }
     }
     private func tabButton(_ title: String, symbol: String, index: Int) -> some View {
@@ -976,16 +1774,41 @@ struct LibraryView: View {
                 Toggle("Extended logging", isOn: $input.diagnostics)
             } header: { Text("Diagnostics") }
             Section("Pointer") { LibraryPointerSettings() }
+            if LibraryFlags.enabled("MADEIRA_RUNTIME_SETTINGS") { RuntimeMemorySyncSettings() }
             Section("Controller") {
                 Toggle("Right stick controls mouse", isOn: $input.padRightStickMouse)
             }
             if nativeSteam {
                 SteamSettingsSection(signIn: { steamSignIn = true }, openClient: { steamManager = true })
             }
-            Section("Library") {
-                Text("Add complete application folders to Madeira/wine/drive_c using Files. Display, frame limit, and compatibility options are saved per game.")
-                Text("The optional interface is enabled by MADEIRA_FRONTEND=1 in madeira-frontend.txt or madeira-env.txt.").font(.caption).foregroundStyle(.secondary)
+            // ml1530: reopens the first-run setup (MADEIRA_ONBOARDING=0 hides it).
+            if OnboardingModel.enabled {
+                Section {
+                    Button { onboarding.rerun() } label: { Label("Run setup again", systemImage: "wand.and.stars") }
+                } footer: {
+                    Text("Walks you through installing Steam for Windows and signing in to Steam.")
+                }
             }
+            Section {
+                Toggle("Use developer interface", isOn: Binding(get: { developerUI }, set: { on in
+                    developerUI = on; FrontendChoice.choose(new: !on); restartNotice = true
+                }))
+            } header: { Text("Interface") } footer: {
+                Text("The developer interface is Madeira's original diagnostic screen. The change applies after Madeira restarts.")
+            }
+            // ml2015 (owner request): credits, last on the Settings page.
+            Section {
+                MadeiraCredit(name: "Will Faust", handle: "willfaust", role: "Created Madeira")
+                MadeiraCredit(name: "Nick", handle: "125hz", role: "32-bit game support, the game library and Madeira Dock")
+                MadeiraCredit(name: "Jfishin", handle: "Jfishin", role: "The original native Steam sign-in, library and downloads")
+            } header: { Text("Credits") } footer: {
+                Text("Madeira is built on Wine, FEX-Emu, DXMT by Feifan He (3Shain) with the Direct3D 9 frontend by David Acevedo (dacevedo12), rpmalloc by Mattias Jansson, and StikDebug for enabling JIT. Thank you to everyone who contributes to these projects.")
+            }
+        }
+        .alert("Restart Madeira", isPresented: $restartNotice) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Close Madeira from the app switcher and open it again to switch interfaces.")
         }
     }
     private var library: some View {
@@ -1016,6 +1839,20 @@ struct LibraryView: View {
                             .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
                     }.buttonStyle(.plain)
                 }
+                // ml1530: opens the installed Windows Steam client in the Wine desktop.
+                // MADEIRA_LIBRARY_STEAM_BUTTON=0 hides it.
+                if steamButton && nativeSteam, steamClient.snapshot.client != nil {
+                    Button {
+                        guard let entry = steamClient.clientEntry(bigPicture: false) else { return }
+                        LogStore.shared.log("[library] ml1530 Steam button opens the client")
+                        play(entry)
+                    } label: {
+                        Label("Steam", systemImage: "storefront").font(.subheadline.weight(.medium))
+                            .padding(.horizontal, 14).frame(minHeight: 44)
+                            .background(Color(uiColor: .secondarySystemGroupedBackground), in: Capsule())
+                    }.buttonStyle(.plain)
+                        .accessibilityHint("Opens Steam for Windows")
+                }
                 }
                 if sectioned {
                     sections(width: viewport.size.width)
@@ -1028,7 +1865,7 @@ struct LibraryView: View {
         }
         .refreshable { if sectioned && steam.phase == .signedIn { await steam.refreshLibrary() } }
         .onReceive(controller.commands) { command in
-            guard tab == 0, selected == nil, !browser, !steamManager, !steamSignIn, steamGame == nil else { return }
+            guard tab == 0, selected == nil, !browser, !steamManager, !steamSignIn, steamGame == nil, !onboarding.presented else { return }
             let items = focusCells
             let ids = [LibraryEntry.desktopID] + items.map(\.id)
             let index = ids.firstIndex(where: { $0 == focused }) ?? 0
@@ -1051,6 +1888,8 @@ struct LibraryView: View {
                             Label("Cards", systemImage: "square.grid.2x2").tag("cards")
                             Label("Compact cards", systemImage: "square.grid.3x3").tag("compact")
                             Label("List", systemImage: "list.bullet").tag("list")
+                            // ml1970: one short row per game, same details.
+                            Label("Compact list", systemImage: "list.dash").tag("compactList")
                         }
                         if refinements {
                             Picker("Sort by", selection: $sort) {
@@ -1071,8 +1910,22 @@ struct LibraryView: View {
             } }
         }
         .sheet(item: $selected) { entry in
-            LibraryDetail(entry: entry, play: { profile in selected = nil; play(profile) })
+            LibraryDetail(entry: entry, play: { profile in
+                // ml1970: keep the details page up until the session's starting screen takes
+                // over (or an error needs the library's alert), instead of showing the library
+                // for the second or two a Dock start spends preparing. MADEIRA_DETAIL_HOLD=0.
+                if LibraryFlags.enabled("MADEIRA_DETAIL_HOLD") {
+                    play(profile)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 15) { if selected?.id == entry.id { selected = nil } }
+                } else {
+                    selected = nil; play(profile)
+                }
+            })
         }
+        .onChange(of: model.current) { _, current in if current != nil { selected = nil } }
+        .onChange(of: model.error) { _, error in if error != nil { selected = nil } }
+        .onChange(of: model.restartNotice) { _, notice in if notice != nil { selected = nil } }
+        .onChange(of: model.closeDetail) { _, _ in selected = nil }
         .alert("Library", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK", role: .cancel) { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -1089,11 +1942,15 @@ struct LibraryView: View {
         let owned = ownedGames
         let steamInstalled = steamEntries
         VStack(alignment: .leading, spacing: 14) {
-            LibrarySectionHeader(title: "Steam", count: steamInstalled.count) {
+            // ml1990: the installed Steam games and Other games collapse like Not installed.
+            LibrarySectionHeader(title: "Steam", count: steamInstalled.count,
+                                 collapsed: collapsibleSections ? $hideInstalled : nil) {
                 if steam.refreshing { ProgressView().accessibilityLabel("Refreshing Steam library") }
             }
             if steam.phase == .signedOut { SteamSignInCard { steamSignIn = true } }
-            if !owned.downloading.isEmpty || !steamInstalled.isEmpty {
+            if hideInstalled && collapsibleSections {
+                EmptyView()
+            } else if !owned.downloading.isEmpty || !steamInstalled.isEmpty {
                 cells(owned.downloading.map(Cell.owned) + steamInstalled.map(Cell.entry), width: width)
             } else if steam.phase == .signedIn && !steam.refreshing && owned.notInstalled.isEmpty && search.isEmpty {
                 Text(steam.libraryUpdated == nil ? "Pull down to load your Steam library."
@@ -1116,10 +1973,13 @@ struct LibraryView: View {
             }
         }
         VStack(alignment: .leading, spacing: 14) {
-            LibrarySectionHeader(title: "Other games", count: otherEntries.count) {
+            LibrarySectionHeader(title: "Other games", count: otherEntries.count,
+                                 collapsed: collapsibleSections ? $hideOthers : nil) {
                 Button { browser = true } label: { Label("Add a game", systemImage: "plus.circle") }.font(.subheadline)
             }
-            if otherEntries.isEmpty {
+            if hideOthers && collapsibleSections {
+                EmptyView()
+            } else if otherEntries.isEmpty {
                 Text(search.isEmpty
                      ? "Copy a game's folder into Madeira › wine › drive_c with the Files app, then tap + and choose its .exe."
                      : "No other games match your search.")
@@ -1130,8 +1990,9 @@ struct LibraryView: View {
         }
     }
     @ViewBuilder private func cells(_ items: [Cell], width viewportWidth: CGFloat) -> some View {
-        if layoutsEnabled && layout == "list" {
-            LazyVStack(spacing: 8) { ForEach(items) { item in cell(item, list: true) } }
+        if layoutsEnabled && (layout == "list" || layout == "compactList") {
+            let dense = layout == "compactList"
+            LazyVStack(spacing: dense ? 4 : 8) { ForEach(items) { item in cell(item, list: true, dense: dense) } }
         } else {
             let compact = layoutsEnabled && layout == "compact"
             let width = max(1, min(viewportWidth, 1100) - 32)
@@ -1142,11 +2003,11 @@ struct LibraryView: View {
             }.frame(maxWidth: .infinity, alignment: .center)
         }
     }
-    @ViewBuilder private func cell(_ item: Cell, list: Bool) -> some View {
+    @ViewBuilder private func cell(_ item: Cell, list: Bool, dense: Bool = false) -> some View {
         switch item {
-        case .entry(let entry): libraryItem(entry, list: list)
+        case .entry(let entry): libraryItem(entry, list: list, dense: dense)
         case .owned(let game):
-            Button { steamGame = SteamGameRef(id: game.id) } label: { SteamOwnedCell(game: game, list: list) }
+            Button { steamGame = SteamGameRef(id: game.id) } label: { SteamOwnedCell(game: game, list: list, dense: dense) }
                 .buttonStyle(.plain)
                 .overlay(RoundedRectangle(cornerRadius: 16).stroke(focused == game.focusID && controller.connected ? Color.accentColor : .clear, lineWidth: 2))
                 .id(game.focusID)
@@ -1158,13 +2019,29 @@ struct LibraryView: View {
         case .owned(let game): steamGame = SteamGameRef(id: game.id)
         }
     }
-    private func libraryItem(_ entry: LibraryEntry, list: Bool) -> some View {
-        Button { selected = entry } label: {
+    private func libraryItem(_ entry: LibraryEntry, list: Bool, dense: Bool = false) -> some View {
+        // ml1970: Steam playtime and last played (SteamPlaytime), when Steam has any.
+        let played = SteamAccountModel.playtimeEnabled ? entry.steamAppID.flatMap { steam.playtime[$0] } : nil
+        return Button { selected = entry } label: {
             Group {
-                if list {
+                if list && dense {
+                    HStack(spacing: 10) {
+                        LibraryArtwork(entry: entry).frame(width: 28, height: 42).clipShape(RoundedRectangle(cornerRadius: 5))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                            if let summary = played?.summary { Text(summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                        }
+                        Spacer(minLength: 6)
+                        LibraryBadges(entry: entry).foregroundStyle(.secondary).fixedSize()
+                    }.padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+                } else if list {
                     HStack(spacing: 14) {
                         LibraryArtwork(entry: entry).frame(width: 48, height: 72).clipShape(RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 8) { Text(entry.title).font(.headline).lineLimit(2); LibraryBadges(entry: entry).foregroundStyle(.secondary) }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(entry.title).font(.headline).lineLimit(2); LibraryBadges(entry: entry).foregroundStyle(.secondary)
+                            if let summary = played?.summary { Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                        }
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
                     }.padding(10).background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16))
@@ -1173,6 +2050,7 @@ struct LibraryView: View {
                         LibraryArtwork(entry: entry).aspectRatio(2.0 / 3.0, contentMode: .fit).clipShape(RoundedRectangle(cornerRadius: 12))
                         Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(2)
                         LibraryBadges(entry: entry).foregroundStyle(.secondary)
+                        if let text = played?.played { Text(text).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
                     }.padding(4)
                 }
             }.foregroundStyle(.primary)
@@ -1249,28 +2127,35 @@ struct LibraryDetail: View {
     }
     private func start() {
         guard !leaving else { return }
+        // ml1530: without a stored choice, a native game starts through the Windows
+        // Steam client when it is installed (MADEIRA_STEAM_DEFAULT_CLIENT); only the
+        // launched profile carries the resolved mode, the saved entry keeps "no choice".
+        let viaClient = entry.startsWithClient
         if entry.steamNative == true {
             // ml1310: an unfinished update mixes old and new files.
             if let appID = entry.steamAppID, SteamAccountModel.shared.downloads[appID] != nil {
                 error = "This game's update has not finished. Resume it and wait for it to complete before playing."; return
             }
-            if entry.steamClientLaunch == true {
+            if viaClient {
                 entry.steamClientPath = SteamLibraryModel.shared.snapshot.client
             } else if (try? LibraryModel.executable(entry.relativePath)) == nil {
                 error = "The game's files are missing. Uninstall it and install it again."; return
             }
-            LogStore.shared.log("[steam-play] ml1310 app=\(entry.steamAppID ?? 0) mode=\(entry.steamClientLaunch == true ? "client" : "direct") client-found=\(entry.steamClientPath == nil ? 0 : 1)")
-            if entry.steamClientLaunch == true {
+            LogStore.shared.log("[steam-play] ml1310 app=\(entry.steamAppID ?? 0) mode=\(viaClient ? "client" : "direct") client-found=\(entry.steamClientPath == nil ? 0 : 1)")
+            if entry.steamClientLaunch == nil { LogStore.shared.log("[steam-play] ml1530 default start mode=\(viaClient ? "client" : "direct")") }
+            if viaClient {
                 LogStore.shared.log("[steam-silent] ml1360 enabled=\(LibraryFlags.enabled("MADEIRA_STEAM_SILENT") ? 1 : 0)")
                 if let appID = entry.steamAppID { SteamAccountModel.logInstallRecord(appID: appID) }
             }
         }
         leaving = true
-        let profile = entry
+        let stored = entry
+        var profile = entry
+        if entry.steamNative == true && entry.steamClientLaunch == nil { profile.steamClientLaunch = viaClient }
         fputs("[launch-feedback] ml1250 pending=1 polish=\(launchPolish ? 1 : 0)\n", stderr)
         // Give the pressed state a display turn before saving and handing off.
         DispatchQueue.main.asyncAfter(deadline: .now() + (launchPolish ? 0.12 : 0)) {
-            model.save(profile); play(profile)
+            model.save(stored); play(profile)
         }
     }
     var body: some View {
@@ -1282,6 +2167,10 @@ struct LibraryDetail: View {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(entry.title).font(.title2.bold())
                             LibraryBadges(entry: entry)
+                            if SteamAccountModel.playtimeEnabled, let appID = entry.steamAppID,
+                               let summary = SteamAccountModel.shared.playtime[appID]?.summary {
+                                Text(summary).font(.subheadline).foregroundStyle(.secondary)
+                            }
                             Button(action: start) { HStack(spacing: 10) { Image(systemName: "play.fill"); Text(entry.steamAppID != nil && entry.steamInstalled == false ? "Install" : "Play").fontWeight(.semibold) }.frame(minWidth: 100, minHeight: 30) }
                                 .buttonStyle(LibraryPlayStyle(pending: leaving)).disabled(leaving)
                         }
@@ -1300,6 +2189,12 @@ struct LibraryDetail: View {
                     Button("Choose cover image", systemImage: "photo") { importCover = true }
                     if entry.coverFile != nil { Button("Use Steam artwork") { entry.coverFile = nil } }
                 } }
+                // ml1520: how the game starts sits near the top, under its library details.
+                if entry.steamNative == true && SteamAccountModel.enabled {
+                    SteamEntrySection(entry: $entry) {
+                        leaving = true; SteamAccountModel.shared.uninstall(entry); dismiss()
+                    }
+                }
                 Section("Display") {
                     Picker("Resolution", selection: $entry.resolution) {
                         ForEach(["640x480", "800x600", "960x540", "1024x768", "1280x720", "1280x960", "1920x1080", "2560x1440"], id: \.self) { Text($0).tag($0) }
@@ -1311,11 +2206,14 @@ struct LibraryDetail: View {
                     }
                     Picker("Aspect & scaling", selection: $entry.display) { ForEach(DisplayMode.allCases, id: \.rawValue) { Text($0.label).tag($0.rawValue) } }
                     FPSChoice(mode: $entry.fpsMode)
-                    Toggle("Offer higher display modes", isOn: $entry.extendedModes)
                 }
                 Section {
                     Toggle("Reduced-precision x87", isOn: $entry.reducedX87)
                     Toggle("Fast synchronization", isOn: $entry.fastSync)
+                    Picker("CPU cores reported", selection: Binding(get: { entry.cpuCount ?? 0 }, set: { entry.cpuCount = $0 == 0 ? nil : $0 })) {
+                        Text("Automatic").tag(0)
+                        ForEach([1, 2, 4, 6], id: \.self) { Text("\($0)").tag($0) }
+                    }
                     Toggle("Fast semaphore waits (experimental)", isOn: Binding(get: { entry.semaphoreFastPath ?? false }, set: { entry.semaphoreFastPath = $0 }))
                     Picker("D3D9 anisotropic filtering", selection: Binding(get: { entry.anisotropyLimit ?? 0 }, set: { entry.anisotropyLimit = $0 })) {
                         Text("Application default").tag(0)
@@ -1332,11 +2230,6 @@ struct LibraryDetail: View {
                     LabeledContent("Control opacity") { Slider(value: $entry.controlOpacity, in: 0.15...1) }
                     LabeledContent("Control size") { Slider(value: $entry.controlSize, in: 0.5...2) }
                     Text("Arrange buttons and choose XInput, mouse, or keyboard actions from the in-game menu.").font(.caption).foregroundStyle(.secondary)
-                }
-                if entry.steamNative == true && SteamAccountModel.enabled {
-                    SteamEntrySection(entry: $entry) {
-                        leaving = true; SteamAccountModel.shared.uninstall(entry); dismiss()
-                    }
                 }
                 Section("Executable") { Text(entry.windowsPath).font(.caption.monospaced()).textSelection(.enabled) }
                 if !(entry.steamNative == true && SteamAccountModel.enabled) {
@@ -1430,6 +2323,114 @@ struct FPSChoice: View {
     @Binding var mode: Int
     var body: some View {
         HStack { Text("FPS limit"); Spacer(); Picker("FPS limit", selection: $mode) { Text("30 FPS").tag(3); Text("60 FPS").tag(1); Text("Display maximum").tag(0); Text("Uncapped").tag(2) }.labelsHidden().pickerStyle(.menu) }
+    }
+}
+
+/// ml2012: Settings for Will's file-backed swap tier (madeira.cfg swap-mb) and the
+/// in-process sync engine: the fork's fastsync (env.MADEIRA_FASTSYNC) or Will's madsync
+/// (madeira.cfg inproc-sync). Exactly one engine is active, never both. Both are read when
+/// Madeira starts, so changes apply after a restart. MADEIRA_RUNTIME_SETTINGS=0 hides this.
+/// ml2015: one row of Settings › Credits: a person, their GitHub account and what they did.
+struct MadeiraCredit: View {
+    let name: String
+    let handle: String
+    let role: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 6) {
+                Text(name).font(.body.weight(.semibold))
+                if let url = URL(string: "https://github.com/\(handle)") {
+                    Link("@\(handle)", destination: url).font(.subheadline)
+                }
+            }
+            Text(role).font(.subheadline).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+struct RuntimeMemorySyncSettings: View {
+    enum SyncEngine: String, CaseIterable, Identifiable {
+        case fastsync, madsync, off
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .fastsync: return "Fastsync (default)"
+            case .madsync: return "Madsync"
+            case .off: return "Off (plain Wine)"
+            }
+        }
+    }
+    static let swapChoices = [0, 1024, 2048, 4096]
+    /// ml2013: which guest allocations the swap tier may move (env.MADEIRA_SWAP_COVERAGE).
+    /// "" = large blocks (the ml2013 default), "wide" adds heaps and spilled views,
+    /// "classic" restores the original 8 MB-and-up rule.
+    struct SwapCoverage: Identifiable { let tag: String; let label: String; var id: String { tag } }
+    static let coverageChoices = [SwapCoverage(tag: "", label: "Large blocks (default)"),
+                                  SwapCoverage(tag: "wide", label: "Wide (heaps too)"),
+                                  SwapCoverage(tag: "classic", label: "Original (8 MB+)")]
+    @State private var swapMB = RuntimeMemorySyncSettings.currentSwap()
+    @State private var coverage = RuntimeMemorySyncSettings.currentCoverage()
+    @State private var engine = RuntimeMemorySyncSettings.currentEngine()
+    @State private var changed = false
+
+    static func currentSwap() -> Int {
+        let v = Int(MadeiraConfig.get("swap-mb") ?? "") ?? 0
+        return swapChoices.contains(v) ? v : (v > 0 ? swapChoices.last { $0 <= v } ?? 1024 : 0)
+    }
+    static func currentCoverage() -> String {
+        let v = (MadeiraConfig.get("env.MADEIRA_SWAP_COVERAGE") ?? "").lowercased()
+        return coverageChoices.contains { $0.tag == v } ? v : ""
+    }
+    static func currentEngine() -> SyncEngine {
+        if MadeiraConfig.bool("inproc-sync") { return .madsync }
+        let fs = (MadeiraConfig.get("env.MADEIRA_FASTSYNC") ?? "").lowercased()
+        return ["0", "off", "no"].contains(fs) ? .off : .fastsync
+    }
+    static func apply(_ engine: SyncEngine) {
+        switch engine {
+        case .fastsync: MadeiraConfig.set("inproc-sync", nil); MadeiraConfig.set("env.MADEIRA_FASTSYNC", nil)
+        case .madsync: MadeiraConfig.set("inproc-sync", "1"); MadeiraConfig.set("env.MADEIRA_FASTSYNC", "0")
+        case .off: MadeiraConfig.set("inproc-sync", "0"); MadeiraConfig.set("env.MADEIRA_FASTSYNC", "0")
+        }
+    }
+
+    var body: some View {
+        Section {
+            Picker("Swap tier", selection: Binding(get: { swapMB }, set: { mb in
+                swapMB = mb; changed = true
+                MadeiraConfig.set("swap-mb", mb > 0 ? String(mb) : nil)
+                LogStore.shared.log("[runtime-settings] ml2012 swap-mb=\(mb)")
+            })) {
+                ForEach(Self.swapChoices, id: \.self) { mb in
+                    Text(mb == 0 ? "Off" : "\(mb / 1024) GB").tag(mb)
+                }
+            }
+            if swapMB > 0 {
+                Picker("Swap coverage", selection: Binding(get: { coverage }, set: { tag in
+                    coverage = tag; changed = true
+                    MadeiraConfig.set("env.MADEIRA_SWAP_COVERAGE", tag.isEmpty ? nil : tag)
+                    LogStore.shared.log("[runtime-settings] ml2013 swap-coverage=\(tag.isEmpty ? "blocks" : tag)")
+                })) {
+                    ForEach(Self.coverageChoices) { Text($0.label).tag($0.tag) }
+                }
+            }
+            Picker("Sync engine", selection: Binding(get: { engine }, set: { choice in
+                engine = choice; changed = true
+                Self.apply(choice)
+                LogStore.shared.log("[runtime-settings] ml2012 sync=\(choice.rawValue)")
+            })) {
+                ForEach(SyncEngine.allCases) { Text($0.label).tag($0) }
+            }
+        } header: { Text("Memory & sync") } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Swap tier moves game data to a file on this device's storage when memory runs short, using up to the chosen size. It can help games that are closed for using too much memory, at some speed cost.")
+                if swapMB > 0 { Text("Swap coverage: Large blocks moves allocations of 1 MB and up. Wide also moves game heaps and memory placed outside the usual range; try it if a game is still closed for memory. Original uses the first release's 8 MB rule.") }
+                Text("Sync engine: Fastsync is this build's default; Madsync is the upstream engine. Only one runs at a time.")
+                if changed { Text("Restart Madeira (close it from the app switcher) for these changes to apply.").foregroundStyle(.orange) }
+            }
+        }
     }
 }
 
@@ -1554,10 +2555,13 @@ struct LibraryHUD: View {
     @ObservedObject private var input = InputSettings.shared
     private let sessionTools = LibraryFlags.enabled("MADEIRA_SESSION_TOOLS")
     private let launchPolish = LibraryFlags.enabled("MADEIRA_LAUNCH_POLISH")
+    private let sideLogEnabled = LibraryFlags.enabled("MADEIRA_LAUNCH_SIDE_LOG")   // ml1780
+    private let alwaysLog = LibraryFlags.enabled("MADEIRA_STARTUP_LOG_ALWAYS")   // ml1840
     @State private var launchVisible = false
     @State private var launchChanges = 0
     // ml1420: the Windows Steam client's downloads for a client-routed launch.
     @ObservedObject private var steamProgress = SteamClientProgressModel.shared
+    @ObservedObject private var onboarding = OnboardingModel.shared   // ml1530
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     var body: some View {
         GeometryReader { geo in
@@ -1583,6 +2587,12 @@ struct LibraryHUD: View {
                         .allowsHitTesting(false)
                 }
                 if !model.launching { LibraryFloatingItem(isMenu: true, viewport: geo.size, insets: geo.safeAreaInsets) }
+                // ml1530: setup's Steam install; ends the session once Steam is ready.
+                if onboarding.installSession && !model.launching && !model.menu {
+                    OnboardingFinishButton()
+                        .frame(maxWidth: min(520, geo.size.width - 120)).frame(maxWidth: .infinity)
+                        .padding(.top, Self.topInset(geo) + (model.sessionMessage.isEmpty ? 10 : 54))
+                }
                 if model.menu {
                     Color.black.opacity(0.5).ignoresSafeArea().onTapGesture { model.menu = false }.transition(.opacity)
                     menu.frame(width: min(460, geo.size.width - 32), height: min(650, geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom - 24))
@@ -1602,6 +2612,7 @@ struct LibraryHUD: View {
         }.ignoresSafeArea()
         .onAppear { model.saveCurrentProfile(); fputs("[frontend-hud] ml1160 contained menu; stable overlay drag\n", stderr) }
         .onAppear { fputs("[session-tools] ml1180 display-picker/startup-log=\(sessionTools ? 1 : 0)\n", stderr) }
+        .onAppear { fputs("[ui-menu] ml1520 controls first, overlay settings last, red quit\n", stderr) }
         .onChange(of: model.menu) { _, open in
             LibraryController.shared.configure(enabled: model.enabled, ownsInput: open)
             if !open { model.saveCurrentProfile() }
@@ -1620,42 +2631,177 @@ struct LibraryHUD: View {
     private func launchView(_ entry: LibraryEntry, geometry geo: GeometryProxy) -> some View {
         let compact = geo.size.height < 500
         let available = max(0, geo.size.height - geo.safeAreaInsets.top - geo.safeAreaInsets.bottom)
-        return ScrollView {
+        // ml1780: a landscape phone had the live log below the fold of this scroll view; it goes
+        // beside the status there instead. MADEIRA_LAUNCH_SIDE_LOG=0 keeps it underneath.
+        let showLogs = model.launchLogs
+        let sideLogs = showLogs && compact && geo.size.width > geo.size.height && sideLogEnabled
+        return HStack(spacing: 12) {
+        VStack(spacing: 0) {
+        ScrollView {
             VStack(spacing: compact ? 10 : 18) {
                 LibraryArtwork(entry: entry).frame(width: compact ? 90 : 120, height: compact ? 135 : 180)
                     .clipShape(RoundedRectangle(cornerRadius: 14)).shadow(radius: 20)
                 Text(entry.title).font(.title2.bold()).multilineTextAlignment(.center)
-                ProgressView().tint(.white)
-                Text(model.launchSlow ? "Still starting…" : "Starting your game…").foregroundStyle(.white.opacity(0.7))
-                if let progress = steamProgress.progress, progress.active {
+                if model.dockLaunchFailure == nil { ProgressView().tint(.white) }
+                // ml1510: the client's actual stage (connection and content logs) rather than one
+                // fixed line, with the time so far once it is slow. MADEIRA_STEAM_LAUNCH_STAGES=0
+                // leaves `stage` nil and restores the fixed text.
+                // ml1770: setup's Steam install, from the client's updater log.
+                if onboarding.installSession, let stage = onboarding.setupStage {
+                    Text(stage.text).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
+                    Text(stage.detail).font(.caption).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center).frame(maxWidth: 360)
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("\(Int(context.date.timeIntervalSince(model.launchStartedAt)))s")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
+                    }
+                } else if let failure = model.dockLaunchFailure {
+                    Text("Madeira Dock stopped").font(.headline)
+                    Text(failure).font(.caption).multilineTextAlignment(.center).frame(maxWidth: 360)
+                } else if model.dockLaunching {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        VStack(spacing: 8) {
+                            Text(dockStatus).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
+                            // ml2013: what this start does with the game's one-time installs.
+                            if let note = MadeiraDock.installerNote {
+                                Text(note).font(.caption).foregroundStyle(.white.opacity(0.6)).multilineTextAlignment(.center).frame(maxWidth: 360)
+                            }
+                            Text("\(Int(context.date.timeIntervalSince(model.launchStartedAt)))s")
+                                .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
+                        }
+                    }
+                } else if model.steamHolding, let stage = steamProgress.progress?.stage {
+                    Text(stage.text).foregroundStyle(.white.opacity(0.8)).multilineTextAlignment(.center)
+                    if let detail = stage.detail {
+                        Text(detail).font(.caption).foregroundStyle(.white.opacity(0.55)).multilineTextAlignment(.center).frame(maxWidth: 360)
+                    }
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("\(Int(context.date.timeIntervalSince(model.launchStartedAt)))s")
+                            .font(.caption.monospacedDigit()).foregroundStyle(.white.opacity(0.4))
+                    }
+                } else {
+                    Text(model.steamHolding ? (model.launchSlow ? "Still waiting for Steam…" : "Steam is starting your game…")
+                                            : (model.launchSlow ? "Still starting…" : "Starting your game…")).foregroundStyle(.white.opacity(0.7))
+                }
+                // ml1970: under Dock too, while Valve's client installs content the launch needs.
+                if !model.dockLaunching || LibraryFlags.enabled("MADEIRA_DOCK_PROGRESS"), let progress = steamProgress.progress, progress.active {
                     SteamClientProgressBanner(progress: progress).tint(.white).frame(maxWidth: 360)
                 }
+                // ml1490: Steam's own windows stay behind this screen until the game opens.
+                // ml1850: colocated with the known visible desktop control,
+                // independent of session tools and the top session-message overlay.
+                // ml2015 (owner request): one row of glyph-only buttons (close, live log, desktop),
+                // so a short screen no longer pushes them below the fold. The words stay as
+                // VoiceOver labels.
+                if model.dockLaunchFailure != nil || alwaysLog || model.steamHolding {
+                    HStack(spacing: 14) {
+                        if model.dockLaunchFailure != nil {
+                            launchGlyph("Close session", "stop.circle") { model.requestQuit() }
+                        }
+                        if alwaysLog {
+                            launchGlyph(showLogs ? "Hide live log" : "Show live log", "text.alignleft", on: showLogs) {
+                                model.toggleLaunchLogs()
+                            }
+                        }
+                        if model.steamHolding {
+                            launchGlyph(model.dockLaunching ? "Show desktop" : "Show Steam", "macwindow") { model.showSteam() }
+                                .accessibilityHint(model.dockLaunching ? "Shows the Windows desktop" : "Shows the Windows Steam client, for example to sign in")
+                            // ml1780: the client is running the game's one-time installs; restart without them.
+                            if !model.dockLaunching, steamProgress.progress?.stage == .installers, model.activeEntry?.steamGameLaunch == true {
+                                launchGlyph(model.skippingInstallers ? "Closing Steam…" : "Skip one-time installs", "forward.end") {
+                                    model.skipSteamInstallers()
+                                }
+                                .disabled(model.skippingInstallers)
+                                .accessibilityHint("Closes Steam and marks DirectX, Visual C++ and similar installers as done")
+                            }
+                            // ml2015: the same under Madeira Dock while its one-time installs run.
+                            if model.dockLaunching, model.dockLaunchFailure == nil, MadeiraDock.installerScript != nil,
+                               MadeiraDock.pollReport().fields["probe-start-bits"] == nil {
+                                launchGlyph(model.skippingInstallers ? "Skipping one-time installs…" : "Skip one-time installs", "forward.end") {
+                                    model.skipDockInstallers()
+                                }
+                                .disabled(model.skippingInstallers)
+                                .accessibilityHint("Ends this start; the game then starts without its one-time installs")
+                            }
+                        }
+                    }
+                }
+                if model.steamHolding {
+                    // ml1990: no explanatory line under a Madeira Dock start (owner request);
+                    // MADEIRA_DOCK_START_NOTE=1 shows it again.
+                    if !model.dockLaunching || LibraryFlags.enabled("MADEIRA_DOCK_START_NOTE", fallback: false) {
+                        Text(model.dockLaunching ? "Madeira Dock uses your Steam sign-in to request access from Valve before launching the game."
+                                                 : model.steamAttention ? "Steam opened a window. It may need you, for example to sign in."
+                                                  : "Steam's windows stay hidden until the game opens. If Steam needs you, for example to sign in, tap Show Steam.")
+                            .font(.caption).multilineTextAlignment(.center).foregroundStyle(.white.opacity(model.steamAttention ? 0.9 : 0.6))
+                            .frame(maxWidth: 360)
+                    }
+                }
                 if model.launchSlow {
-                    Button("Show game view") { model.showGameView(reason: "button") }.frame(minHeight: 44)
-                    if sessionTools {
+                    if !model.steamHolding { Button("Show game view") { model.showGameView(reason: "button") }.frame(minHeight: 44) }
+                    if sessionTools && !alwaysLog {
                         Button(model.launchLogs ? "Hide live log" : "Show live log") { model.toggleLaunchLogs() }.frame(minHeight: 44)
                     }
                 }
-                if model.liveLogs || model.launchLogs {
+                if showLogs && !sideLogs {
                     LibraryLiveLogs().frame(maxWidth: 550).frame(height: compact ? 90 : 120).clipped()
                 }
             }.padding(16).frame(maxWidth: .infinity).frame(minHeight: available)
         }
+        }.frame(maxWidth: .infinity)
+        if sideLogs {
+            LibraryLiveLogs().frame(width: min(420, geo.size.width * 0.45)).frame(height: max(0, available - 32)).clipped()
+                .padding(.trailing, 16 + geo.safeAreaInsets.trailing)
+        }
+        }
         .frame(width: geo.size.width, height: available)
         .padding(.top, geo.safeAreaInsets.top).foregroundStyle(.white).transition(.opacity)
+        .onAppear {
+            LogStore.shared.log("[launch-log] ml1850 inline=\(alwaysLog ? 1 : 0) tools=\(sessionTools ? 1 : 0) dock=\(model.dockLaunching ? 1 : 0)")
+        }
     }
+    /// ml2015: a round glyph button for the starting screen's control row.
+    private func launchGlyph(_ label: String, _ symbol: String, on: Bool = false,
+                             action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 19, weight: .semibold))
+                .frame(width: 46, height: 46)
+                .background(Circle().fill(Color.white.opacity(on ? 0.32 : 0.16)))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain).foregroundStyle(.white)
+        .accessibilityLabel(label)
+    }
+
+    /// ml1970: what the Dock start is waiting for, from the host's numeric report.
+    private var dockStatus: String {
+        let report = MadeiraDock.pollReport()
+        if report.fields["launch-update-wait"] != nil && report.fields["launch-update-ready"] == nil {
+            return "Steam is installing content this game needs. The game starts when it finishes…"
+        }
+        // ml2015: Steam still counts an earlier session as playing (error 35); the Dock asks again.
+        if report.fields["launch-session-wait"] != nil && report.fields["launch-client-error"] == "35" {
+            return "Steam says this account is still playing in another session. Waiting for Steam to end it (up to 3 minutes)…"
+        }
+        if MadeiraDock.installerScript != nil && report.fields["probe-start-bits"] == nil {
+            // ml2013: which program runs now, and any that failed (MADEIRA_DOCK_INSTALL_REPORT=0: fixed text).
+            if LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_REPORT"), let progress = MadeiraDock.pollInstallers() { return progress }
+            return "Running this game's one-time installs…"
+        }
+        return model.launchSlow ? "Waiting for Madeira Dock…" : "Starting Madeira Dock…"
+    }
+
     private var menu: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack { Label("Session", systemImage: "gamecontroller.fill").font(.title2.bold()); Spacer(); Button("Done") { model.menu = false }.buttonStyle(.bordered) }
-                Toggle("Performance overlay", isOn: $model.performance)
-                if model.performance {
-                    ForEach(["FPS", "Frame time", "RAM", "Battery"], id: \.self) { field in
-                        Toggle(field, isOn: Binding(get: { model.overlayFields.contains(field) }, set: { on in
-                            model.overlayFields.removeAll { $0 == field }; if on { model.overlayFields.append(field) }
-                        })).font(.subheadline)
-                    }
-                }
+                // ml1520: the controls come first, the easiest to reach; the overlay settings last.
+                Toggle("Touch controls", isOn: $controls.visible)
+                // ml1970: the layout choice lives here, and only while touch controls are on.
+                if controls.visible && ControlPresetsModel.enabled { ControllerLayoutPicker { model.menu = false } }
+                LabeledContent("Opacity") { Slider(value: $model.opacity, in: 0.15...1) }
+                Button("Edit controls", systemImage: "slider.horizontal.3") { controls.visible = true; controls.editing = true; model.menu = false }
+                Button("Keyboard", systemImage: "keyboard") { model.menu = false; LibraryKeyboard.show() }
+                Divider()
                 FPSChoice(mode: Binding(get: { model.fpsMode }, set: { model.setFPS($0) }))
                 if sessionTools {
                     LabeledContent("Display fit") {
@@ -1674,12 +2820,19 @@ struct LibraryHUD: View {
                 Text("Mouse & pointer").font(.headline)
                 LibraryPointerSettings()
                 Divider()
-                Toggle("Touch controls", isOn: $controls.visible)
-                LabeledContent("Opacity") { Slider(value: $model.opacity, in: 0.15...1) }
-                Button("Edit controls", systemImage: "slider.horizontal.3") { controls.visible = true; controls.editing = true; model.menu = false }
-                Button("Keyboard", systemImage: "keyboard") { model.menu = false; LibraryKeyboard.show() }
+                Toggle("Performance overlay", isOn: $model.performance)
+                if model.performance {
+                    ForEach(["FPS", "Frame time", "RAM", "Battery"], id: \.self) { field in
+                        Toggle(field, isOn: Binding(get: { model.overlayFields.contains(field) }, set: { on in
+                            model.overlayFields.removeAll { $0 == field }; if on { model.overlayFields.append(field) }
+                        })).font(.subheadline)
+                    }
+                }
                 Divider()
-                Button("Quit game", systemImage: "stop.circle", role: .destructive) { model.requestQuit() }
+                // ml1520: red label and symbol; the menu's .primary style would otherwise win.
+                Button(role: .destructive) { model.requestQuit() } label: {
+                    Label("Quit game", systemImage: "stop.circle").foregroundStyle(.red)
+                }.tint(.red)
                 Text("Closes the running session. Unsaved progress will be lost.").font(.caption).foregroundStyle(.secondary)
             }.frame(maxWidth: .infinity, alignment: .leading).padding(22)
                 .foregroundStyle(.primary)
@@ -1690,17 +2843,21 @@ struct LibraryHUD: View {
 
 struct LibraryLiveLogs: View {
     @ObservedObject private var logs = LogStore.shared
+    private let fill = LibraryFlags.enabled("MADEIRA_STARTUP_LOG_FILL")
     var body: some View {
         // Rows are coalesced by signature; insertion order isn't recency.
         // Show the latest updates so a repeating wait still looks live.
-        ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(Array(logs.entries.sorted { $0.lastTimestamp < $1.lastTimestamp }.suffix(7))) {
-                    Text($0.lastRaw).font(.system(size: 9, design: .monospaced)).lineLimit(2)
+        GeometryReader { geo in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(logs.entries.sorted { $0.lastTimestamp < $1.lastTimestamp }.suffix(fill ? 200 : 7))) {
+                        Text($0.lastRaw).font(.system(size: 9, design: .monospaced)).lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-        }.defaultScrollAnchor(.bottom)
-            .padding(8).background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: fill ? max(0, geo.size.height - 16) : nil, alignment: .topLeading)
+            }.defaultScrollAnchor(.bottom).padding(8)
+        }.background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10)).foregroundStyle(.white)
             .accessibilityLabel("Live diagnostic log")
     }
 }
@@ -1718,6 +2875,12 @@ struct SteamClientProgressBanner: View {
             }
             if let fraction = progress.fraction {
                 ProgressView(value: fraction).frame(maxWidth: compact ? 240 : 300)
+            } else if progress.phase >= .queued {
+                // ml1970: queued or verifying with no byte counts yet: an activity indicator.
+                ProgressView()
+            }
+            if let speed = progress.speedLine {
+                Text(speed).font(.caption2.monospacedDigit()).opacity(0.75)
             }
             if let detail = progress.detail {
                 Text(detail).font(.caption2).opacity(0.75)
@@ -1826,4 +2989,163 @@ final class LibraryKeyInput: UIView, UIKeyInput {
     }
     func deleteBackward() { press(0x08) }
     func releaseModifiers() { for key in held { winios_post_key(key, 0) }; held.removeAll() }
+}
+
+// MARK: - ml1970 store artwork with fallbacks
+
+/// ml1970: store artwork for an App ID. Newer apps publish their library capsule only under a
+/// hashed store_item_assets folder named in PICS, and many demos publish none, so the single
+/// legacy URL left those cards blank. Candidates, in order: the PICS capsule/hero, the legacy
+/// path, the same for a demo's full game, then the store's header image (public store API, no
+/// account data). Failures advance to the next candidate; a working URL is remembered.
+/// MADEIRA_STEAM_ARTWORK=0 restores the single legacy URL.
+@MainActor enum SteamArtwork {
+    private static var working: [String: URL] = [:]
+    private static var details: [Int: (header: URL?, fullGame: Int?)] = [:]
+    static let assetBase = "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/"
+
+    static func remembered(_ id: Int, backdrop: Bool) -> URL? { working["\(id)-\(backdrop)"] }
+    static func remember(_ url: URL, id: Int, backdrop: Bool) { working["\(id)-\(backdrop)"] = url }
+
+    static func candidates(_ id: Int, backdrop: Bool) -> [URL] {
+        var urls: [URL] = []
+        func add(_ text: String?) { if let text, let url = URL(string: text), !urls.contains(url) { urls.append(url) } }
+        func direct(_ app: Int) {
+            let game = SteamAccountModel.shared.game(app)
+            if backdrop { add(game?.libraryHero.map { assetBase + "\(app)/" + $0 }) }
+            add(game?.libraryCapsule.map { assetBase + "\(app)/" + $0 })
+            add("https://cdn.cloudflare.steamstatic.com/steam/apps/\(app)/" + (backdrop ? "library_hero.jpg" : "library_600x900.jpg"))
+        }
+        direct(id)
+        if let parent = SteamAccountModel.shared.game(id)?.parentID { direct(parent) }
+        if let header = SteamAccountModel.shared.game(id)?.headerImage { add(assetBase + "\(id)/" + header) }
+        return urls
+    }
+
+    /// Store details for an app without usable artwork: its header image, and a demo's full game.
+    static func storeFallbacks(_ id: Int, backdrop: Bool) async -> [URL] {
+        if details[id] == nil {
+            details[id] = (nil, nil)
+            var components = URLComponents(string: "https://store.steampowered.com/api/appdetails")!
+            components.queryItems = [URLQueryItem(name: "appids", value: String(id)), URLQueryItem(name: "filters", value: "basic,fullgame")]
+            var request = URLRequest(url: components.url!); request.timeoutInterval = 15
+            if let (data, response) = try? await URLSession.shared.data(for: request),
+               (response as? HTTPURLResponse)?.statusCode == 200, data.count < 4_000_000,
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let body = (json[String(id)] ?? json.values.first) as? [String: Any], body["success"] as? Bool == true,
+               let info = body["data"] as? [String: Any] {
+                let header = (info["header_image"] as? String).flatMap(URL.init(string:)).flatMap { SteamPaths.trustedArtwork($0) ? $0 : nil }
+                let full = (info["fullgame"] as? [String: Any]).flatMap { ($0["appid"] as? String).flatMap(Int.init) ?? $0["appid"] as? Int }
+                details[id] = (header, full)
+            }
+        }
+        var urls: [URL] = []
+        if let full = details[id]?.fullGame, full != id {
+            urls += candidates(full, backdrop: backdrop)
+            if let header = await storeFallbacks(full, backdrop: backdrop).last { urls.append(header) }
+        }
+        if let header = details[id]?.header { urls.append(header) }
+        return urls
+    }
+}
+
+struct SteamArtworkImage: View {
+    let id: Int
+    let backdrop: Bool
+    @State private var urls: [URL] = []
+    @State private var index = 0
+    @State private var askedStore = false
+    var body: some View {
+        AsyncImage(url: index < urls.count ? urls[index] : nil) { phase in
+            switch phase {
+            case .success(let image):
+                image.resizable().scaledToFill()
+                    .onAppear { if index < urls.count { SteamArtwork.remember(urls[index], id: id, backdrop: backdrop) } }
+            case .failure:
+                Color.clear.onAppear { advance() }
+            default:
+                Color.clear
+            }
+        }
+        .task(id: "\(id)-\(backdrop)") {
+            askedStore = false; index = 0
+            let list = SteamArtwork.candidates(id, backdrop: backdrop)
+            urls = SteamArtwork.remembered(id, backdrop: backdrop).map { [$0] + list.filter { $0 != SteamArtwork.remembered(id, backdrop: backdrop) } } ?? list
+        }
+    }
+    private func advance() {
+        if index + 1 < urls.count { index += 1; return }
+        guard !askedStore else { return }
+        askedStore = true
+        Task { @MainActor in
+            let more = await SteamArtwork.storeFallbacks(id, backdrop: backdrop).filter { !urls.contains($0) }
+            guard !more.isEmpty else { return }
+            let next = urls.count
+            urls += more
+            index = next
+        }
+    }
+}
+
+/// ml1970: the session menu's layout choice: Xbox (the default), the user's custom layouts
+/// ("Custom Layout 1", "Custom Layout 2", ...), and "Create new layout", which opens the editor on
+/// an empty layout to fill with keyboard, mouse and controller buttons. Choosing one replaces the
+/// on-screen controls at once (ControlPresetsModel.load refreshes them).
+struct ControllerLayoutPicker: View {
+    var closeMenu: () -> Void
+    @ObservedObject private var presets = ControlPresetsModel.shared
+    @ObservedObject private var controls = TouchControlsModel.shared
+    @ObservedObject private var model = LibraryModel.shared
+    @State private var confirmDelete: ControlPreset?
+
+    private var currentName: String {
+        guard let active = presets.active else { return "Custom" }
+        return active.id == ControlPresetLayout.xboxID ? "Xbox" : active.name
+    }
+
+    var body: some View {
+        LabeledContent("Controller layout") {
+            Menu {
+                Button { choose(ControlPresetLayout.xboxID) } label: {
+                    if presets.activeID == ControlPresetLayout.xboxID { Label("Xbox", systemImage: "checkmark") }
+                    else { Label("Xbox", systemImage: "gamecontroller") }
+                }
+                ForEach(presets.store.user) { p in
+                    Button { choose(p.id) } label: {
+                        if presets.activeID == p.id { Label(p.name, systemImage: "checkmark") } else { Text(p.name) }
+                    }
+                }
+                Divider()
+                Button("Create new layout", systemImage: "plus") {
+                    guard presets.createLayout() != nil else { return }
+                    model.saveCurrentProfile()
+                    controls.visible = true
+                    controls.editing = true
+                    closeMenu()
+                }
+                if let active = presets.active, !ControlPresetStore.isBuiltIn(active.id) {
+                    Button("Edit \(active.name)", systemImage: "slider.horizontal.3") {
+                        controls.visible = true; controls.editing = true; closeMenu()
+                    }
+                    Button("Delete \(active.name)", systemImage: "trash", role: .destructive) { confirmDelete = active }
+                }
+            } label: {
+                HStack(spacing: 4) { Text(currentName); Image(systemName: "chevron.up.chevron.down").font(.caption) }
+            }
+        }
+        .confirmationDialog("Delete “\(confirmDelete?.name ?? "")”?", isPresented: Binding(get: { confirmDelete != nil },
+                                                                                        set: { if !$0 { confirmDelete = nil } }),
+                            titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                if let p = confirmDelete, presets.delete(p.id) { choose(ControlPresetLayout.xboxID) }
+                confirmDelete = nil
+            }
+        }
+    }
+
+    private func choose(_ id: String) {
+        presets.load(id, screen: ControlPresetsModel.currentScreen())
+        model.saveCurrentProfile()
+        LogStore.shared.log("[controls-layout] ml1970 chose layout=\(id == ControlPresetLayout.xboxID ? "xbox" : "custom")")
+    }
 }

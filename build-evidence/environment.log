@@ -1,0 +1,31 @@
+ProductName:		macOS
+ProductVersion:		15.7.9
+BuildVersion:		24G830
+Xcode 16.4
+Build version 16F6
+18.5
+/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk
+670eb5e6753bec7cf2bc20cf0bd278c396be9f1e
+ 7b528d8a57cb12b794c589dd7e42fff813fc9abd FEX (pre-upstream-merge-11-g7b528d8a5)
+ b3fb4b9feafcd8d91c5cb510a4775143fdbef02f FEX/External/Catch2 (v3.11.0)
+ 450bd2232225d6c7728a4108055ac2e37cef6475 FEX/External/Vulkan-Headers (450bd22)
+ 3e49836995c1dcb3df709440ad2f270b569c6a5f FEX/External/drm-headers (remotes/origin/v6.17)
+ 442678a134e2d25e759c430cca32e06e9e142f1f FEX/External/fex-gcc-target-tests-bins (heads/main)
+ 71349ae6d14ac2e3e792730e240aecd8076cee6c FEX/External/fex-gvisor-tests-bins (heads/main)
+ 9ae29638f8000c1603f16385ed1cf6c4c23ee414 FEX/External/fex-posixtest-bins (heads/master)
+ 407c905e45ad75fc29bf0f9bb7c5c2fd3475976f FEX/External/fmt (12.1.0)
+ 8436195ad5e1bc347d9b39743af3d29abee59f06 FEX/External/jemalloc_glibc (5.2.1-902-g8436195a)
+ ca1388fb9da8e69314dda222dc7b139ca84e092f FEX/External/range-v3 (0.12.0-47-gca1388fb9)
+ 2dae74bb693e42d850fb0adcc9045c5b71fbdeae FEX/External/range-v3/doc/gh-pages (remotes/origin/gh-pages)
+ 42fe7b54ac0c5c66a863207ea3331792c42d0218 FEX/External/rpmalloc (pre-upstream-merge-8-g42fe7b5)
+ 650c98ece70da9e155e7ba1c2b3ee16004aae118 FEX/External/tracy (v0.12.1)
+ 3234af2c03549bc85656bfd3a86993bf1cd8aef1 FEX/External/unordered_dense (v4.8.1)
+ 5f418449c48f6ca3ad37c47ec632f17a561c0580 FEX/External/vixl (5f418449)
+ e626a72bc2321cd320e953a0ccf1584cad60f363 FEX/External/xxhash (v0.8.3)
+ 9bfadd6a55fc92dbd37fa3ba089bf8b36622df4f FEX/External/zydis (9bfadd6)
+ 75a36c45ae1ad382b0f4e0ede0af84c11ee69928 FEX/External/zydis/dependencies/zycore (v1.5.2-7-g75a36c4)
+ 9f94388a339fcbb0bc95c17768eb786c85988f6e FEX/Source/Common/cpp-optparse (heads/master)
+ 550735c32c1a2faa68fa4fe504ac827e0f341831 research/dxmt (v0.73-117-g550735c)
+ d08488fcc82eef313b0464db37d2955709691e94 research/dxmt/external/nvapi (remotes/origin/530-13-gd08488f)
+ 9df86f2341616ef1888ae59919feaa6d4fad693d research/dxmt/include/native/directx (heads/main)
+ 65fab17629dd768de44711082c7cfa5e199278b1 wine (remotes/origin/integration/upstream-0926)

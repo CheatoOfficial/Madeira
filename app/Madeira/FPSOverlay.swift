@@ -150,6 +150,9 @@ struct FPSOverlay: View {
                     Text(String(format: "%.1f", fps))
                         .foregroundColor(fpsColor)
                     pacingPill
+                    capturePill
+                    ecoPill
+                    fencePill
                 }
                 .font(.system(.caption, design: .monospaced))
                 .padding(6)
@@ -178,6 +181,9 @@ struct FPSOverlay: View {
                         .foregroundColor(fpsColor)
                         .frame(width: 40, alignment: .trailing)
                     pacingPill
+                    capturePill
+                    ecoPill
+                    fencePill
                 }
                 .font(.system(.caption, design: .monospaced))
                 .padding(.horizontal, 8)
@@ -232,6 +238,66 @@ struct FPSOverlay: View {
         case 2: return 3    // RAW -> 30
         default: return 1   // 30 -> 60
         }
+    }
+
+    /// ml1098: one tap = capture the next frame (every render pass's attachments
+    /// to Documents/capture/, plus the full draw-dump in the log). The pill
+    /// flashes for a second so a tap is visibly taken.
+    @State private var captureFlash = false
+    private var capturePill: some View {
+        Text("CAP")
+            .foregroundColor(captureFlash ? .black : .cyan)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(captureFlash ? Color.cyan : Color.clear)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.cyan, lineWidth: 1))
+            .onTapGesture {
+                madeira_capture_request(1)
+                captureFlash = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { captureFlash = false }
+            }
+    }
+
+    /// ml1133: ECO. The SoC clamps the CPU clock once ~250 J of CPU energy has
+    /// been spent above ~2.3 W, and a loading screen at full clock spends nearly
+    /// all of it before gameplay starts. ECO on = guest threads run at a low QoS
+    /// class (efficiency cores, lower clocks): loading is slower but keeps the
+    /// budget for gameplay. Turn it off once in game. Green = on.
+    @State private var ecoOn = madeira_get_eco() != 0
+    private var ecoPill: some View {
+        Text("ECO")
+            .foregroundColor(ecoOn ? .black : .green)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background(ecoOn ? Color.green : Color.clear)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Color.green, lineWidth: 1))
+            .onTapGesture {
+                ecoOn.toggle()
+                madeira_set_eco(ecoOn ? 1 : 0)
+            }
+    }
+
+    /// ml1136: GPU encoder-sync mode, switchable live for in-place A/B tests.
+    /// F1 = every encoder waits for the one before (accurate, default),
+    /// F6 = barrier-driven, F5 = render passes wait at the fragment stage,
+    /// F0 = no fences at all (diagnostic ceiling; expect flicker).
+    // ml1137: the overlay view is recreated on layout changes, which reset a plain
+    // @State to the config value (ph-rdr93: taps re-requested F6 three times).
+    // The mode lives in a static so it survives, and @State mirrors it for redraws.
+    @State private var fenceMode: Int = FPSOverlayFenceMode.current
+    private var fencePill: some View {
+        let color: Color = fenceMode == 1 ? .white : fenceMode == 6 ? .purple : fenceMode == 5 ? .blue : .red
+        return Text("F\(fenceMode)")
+            .foregroundColor(color)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .overlay(RoundedRectangle(cornerRadius: 4).stroke(color, lineWidth: 1))
+            .onTapGesture {
+                fenceMode = FPSOverlayFenceMode.current
+                fenceMode = fenceMode == 1 ? 6 : fenceMode == 6 ? 5 : fenceMode == 5 ? 0 : 1
+                FPSOverlayFenceMode.current = fenceMode
+                madeira_set_fence_mode(Int32(fenceMode == 0 ? 7 : fenceMode))
+            }
     }
 
     private func pillLabel(for mode: Int32) -> String {
@@ -334,4 +400,9 @@ struct FPSOverlay: View {
         guard dt > 0.0001 else { return 0 }
         return Double(dc) / dt
     }
+}
+
+/// ml1137: process-wide fence-mode display state for the overlay pill.
+enum FPSOverlayFenceMode {
+    static var current: Int = Int(MadeiraConfig.get("fence-chain") ?? "1") ?? 1
 }

@@ -6,7 +6,10 @@ import UIKit
 
 // MARK: - Sign in
 
-struct SteamSignInView: View {
+/// ml2011: renamed from SteamSignInView, which is now the standalone sign-in
+/// (SteamSignIn/SteamSignInView.swift, the upstream PR's type). This is the library's
+/// native account sign-in (SteamAccountModel).
+struct SteamAccountSignInView: View {
     @ObservedObject private var steam = SteamAccountModel.shared
     @Environment(\.dismiss) private var dismiss
     @State private var method: SteamAccountModel.SignInMethod = UIDevice.current.userInterfaceIdiom == .pad ? .qr : .password
@@ -182,17 +185,36 @@ struct SteamDownloadStatus: View {
 struct SteamOwnedCell: View {
     let game: SteamOwnedGame
     let list: Bool
+    var dense = false
     @ObservedObject private var steam = SteamAccountModel.shared
     var body: some View {
         let download = steam.downloads[game.id]
+        let played = SteamAccountModel.playtimeEnabled ? steam.playtime[game.id] : nil
         Group {
-            if list {
+            if list && dense {
+                // ml1970: compact list row.
+                HStack(spacing: 10) {
+                    LibraryArtwork(entry: steamArtworkEntry(game)).frame(width: 28, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 5)).opacity(download == nil ? 0.72 : 1)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(game.name).font(.subheadline.weight(.semibold)).lineLimit(1)
+                        if let download { SteamDownloadStatus(download: download) }
+                        else if let summary = played?.summary { Text(summary).font(.caption2).foregroundStyle(.secondary).lineLimit(1) }
+                    }
+                    Spacer(minLength: 6)
+                    badges.fixedSize()
+                }.padding(.horizontal, 8).padding(.vertical, 5)
+                    .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 10))
+            } else if list {
                 HStack(spacing: 14) {
                     LibraryArtwork(entry: steamArtworkEntry(game)).frame(width: 48, height: 72)
                         .overlay { overlay(download) }.clipShape(RoundedRectangle(cornerRadius: 8))
                     VStack(alignment: .leading, spacing: 8) {
                         Text(game.name).font(.headline).lineLimit(2)
                         if let download { SteamDownloadStatus(download: download) } else { badges }
+                        if download == nil, let summary = played?.summary {
+                            Text(summary).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
                     }
                     Spacer(minLength: 0)
                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
@@ -214,7 +236,7 @@ struct SteamOwnedCell: View {
     private var badges: some View {
         HStack(spacing: 4) {
             badge(steam.downloads[game.id] == nil ? "Not installed" : "Downloading")
-            if game.downloadBytes > 0 { badge(formatBytes(game.downloadBytes)) }
+            if let bytes = game.displayedDownloadBytes { badge(formatBytes(bytes)) }
         }.foregroundStyle(.secondary)
     }
     private func badge(_ text: String) -> some View {
@@ -244,6 +266,7 @@ struct SteamGameSheet: View {
     var openEntry: (LibraryEntry) -> Void
     @ObservedObject private var steam = SteamAccountModel.shared
     @ObservedObject private var library = LibraryModel.shared
+    @ObservedObject private var client = SteamLibraryModel.shared
     @Environment(\.dismiss) private var dismiss
     @State private var freeSpace: Int64?
     @State private var partial = false
@@ -261,8 +284,11 @@ struct SteamGameSheet: View {
                             LibraryArtwork(entry: steamArtworkEntry(game)).frame(width: 120, height: 180).clipShape(RoundedRectangle(cornerRadius: 14))
                             VStack(alignment: .leading, spacing: 12) {
                                 Text(game.name).font(.title2.bold())
-                                if game.downloadBytes > 0 {
-                                    Text("Download about \(formatBytes(game.downloadBytes))").font(.subheadline).foregroundStyle(.secondary)
+                                if SteamAccountModel.playtimeEnabled, let summary = steam.playtime[appID]?.summary {
+                                    Text(summary).font(.subheadline).foregroundStyle(.secondary)
+                                }
+                                if let bytes = game.displayedDownloadBytes {
+                                    Text("Download about \(formatBytes(bytes))").font(.subheadline).foregroundStyle(.secondary)
                                 }
                                 primaryAction(game)
                             }
@@ -281,7 +307,7 @@ struct SteamGameSheet: View {
                     }
                     Section {
                         if let freeSpace { LabeledContent("Free space on this device", value: formatBytes(freeSpace)) }
-                        Text("Games download directly from Steam with your account into C:\\Program Files (x86)\\Steam\\steamapps\\common. Keep Madeira open while downloading. A download pauses while a game is running and continues afterwards.")
+                        Text("Games download directly from Steam with your account into C:\\Program Files (x86)\\Steam\\steamapps\\common. You can leave Madeira while it downloads: on iOS 26 and later iOS shows the download's progress and keeps it going; on earlier versions it pauses after a short while and continues when you return. A download pauses while a game is running and continues afterwards.")
                             .font(.footnote).foregroundStyle(.secondary)
                     }
                     Section {
@@ -324,6 +350,18 @@ struct SteamGameSheet: View {
             case .failed:
                 Button { steam.install(appID) } label: { actionLabel("Try again", symbol: "arrow.clockwise") }
                     .buttonStyle(.borderedProminent)
+            }
+        } else if OnboardingRules.installNeedsClient(clientInstalled: client.snapshot.client != nil,
+                                                     required: LibraryFlags.enabled("MADEIRA_STEAM_REQUIRE_CLIENT")) {
+            // ml1530: games start through Steam for Windows, and a Steam folder made by a
+            // download first stopped its installer. MADEIRA_STEAM_REQUIRE_CLIENT=0 allows it.
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Install the Steam client first").font(.subheadline.weight(.semibold))
+                Text("Steam for Windows starts your games. Install it once, then install this game.")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button { dismiss(); OnboardingModel.shared.openSteamClientSetup(appID: appID) } label: {
+                    actionLabel("Install Steam", symbol: "desktopcomputer")
+                }.buttonStyle(.borderedProminent)
             }
         } else {
             Button { steam.install(appID) } label: {
@@ -373,14 +411,35 @@ struct SteamSignInCard: View {
 struct LibrarySectionHeader<Trailing: View>: View {
     let title: String
     var count: Int?
+    /// ml1990: when set, tapping the title collapses or expands the section.
+    var collapsed: Binding<Bool>? = nil
     @ViewBuilder var trailing: Trailing
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).font(.title2.bold())
-            if let count, count > 0 { Text("\(count)").font(.subheadline).foregroundStyle(.secondary) }
-            Spacer()
-            trailing
-        }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+        if let collapsed {
+            HStack(alignment: .firstTextBaseline) {
+                Button {
+                    withAnimation(UIAccessibility.isReduceMotionEnabled ? nil : .easeInOut(duration: 0.2)) { collapsed.wrappedValue.toggle() }
+                } label: {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Text(title).font(.title2.bold())
+                        if let count, count > 0 { Text("\(count)").font(.subheadline).foregroundStyle(.secondary) }
+                        Image(systemName: "chevron.right").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(collapsed.wrappedValue ? 0 : 90))
+                    }.contentShape(Rectangle()).frame(minHeight: 44)
+                }.buttonStyle(.plain)
+                    .accessibilityAddTraits(.isHeader)
+                    .accessibilityValue(collapsed.wrappedValue ? "Collapsed" : "Expanded")
+                Spacer()
+                trailing
+            }
+        } else {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.title2.bold())
+                if let count, count > 0 { Text("\(count)").font(.subheadline).foregroundStyle(.secondary) }
+                Spacer()
+                trailing
+            }.accessibilityElement(children: .combine).accessibilityAddTraits(.isHeader)
+        }
     }
 }
 
@@ -391,6 +450,7 @@ struct SteamSettingsSection: View {
     var signIn: () -> Void
     var openClient: () -> Void
     @State private var confirmSignOut = false
+    @State private var showDockSignIn = false   // ml2011
     var body: some View {
         Section {
             if steam.phase == .signedIn {
@@ -411,12 +471,25 @@ struct SteamSettingsSection: View {
             } else {
                 Button(action: signIn) { Label("Sign in to Steam", systemImage: "person.crop.circle.badge.plus") }
             }
+            // ml2010: the regular Windows Steam client is deferred to a later release; Madeira
+            // Dock starts Steam games. MADEIRA_STEAM_CLIENT_OPTIONS=1 enables the entry again.
+            // ml2011: the standalone Steam sign-in Madeira Dock uses (MADEIRA_DOCK_SIGNIN_V2=0 hides it).
+            if LibraryFlags.enabled("MADEIRA_DOCK_SIGNIN_V2", fallback: false) {
+                Button { showDockSignIn = true } label: {
+                    Label(SteamSignIn.isSignedIn ? "Madeira Dock sign-in: \(SteamSignIn.accountName ?? "signed in")" : "Sign in for Madeira Dock (new)…",
+                          systemImage: "key")
+                }
+            }
             Button(action: openClient) { Label("Windows Steam client…", systemImage: "desktopcomputer") }
+                .disabled(!SteamClientOptions.enabled)
         } header: {
             Text("Steam")
         } footer: {
-            Text("Madeira keeps a Steam sign-in token in this device's Keychain. Signing out removes it; installed games stay on this device. The Windows Steam client is optional and only needed for games that require Steam to be running.")
+            Text(SteamClientOptions.enabled
+                 ? "Madeira keeps a Steam sign-in token in this device's Keychain. Signing out removes it; installed games stay on this device. The Windows Steam client is optional and only needed for games that require Steam to be running."
+                 : "Madeira keeps a Steam sign-in token in this device's Keychain. Signing out removes it; installed games stay on this device. Steam games start with Madeira Dock; the regular Windows Steam client comes in a later release.")
         }
+        .sheet(isPresented: $showDockSignIn) { SteamSignInView() }
         .confirmationDialog("Sign out of Steam? Installed games stay on this device.", isPresented: $confirmSignOut, titleVisibility: .visible) {
             Button("Sign out", role: .destructive) { steam.signOut() }
         }
@@ -435,13 +508,62 @@ struct SteamEntrySection: View {
 
     var body: some View {
         Section {
-            Picker("Start with", selection: Binding(get: { entry.steamClientLaunch == true }, set: { entry.steamClientLaunch = $0 })) {
-                Text("The game").tag(false)
-                Text("Windows Steam client").tag(true)
+            // ml1530: without a stored choice the default shows (startsWithClient); only a
+            // change here stores one.
+            // ml1970: Madeira Dock (the default), the game alone, or regular Steam, which is only
+            // selectable while the regular desktop client is installed.
+            let dock = MadeiraDock.enabled
+            // ml2010: regular Steam is deferred to a later release (MADEIRA_STEAM_CLIENT_OPTIONS=1).
+            let steamReady = SteamClientOptions.enabled
+                && (dock ? client.snapshot.desktopClient : client.snapshot.client != nil)
+            Picker("Start with", selection: Binding(get: { entry.steamStartMode }, set: { mode in
+                guard mode != .steam || steamReady else { return }
+                entry.setSteamStartMode(mode)
+            })) {
+                if dock { Text("Madeira Dock").tag(SteamStartMode.dock) }
+                Text("The game").tag(SteamStartMode.game)
+                Text(dock ? "Steam (more usage)" : "Steam client").tag(SteamStartMode.steam)
+                    .disabled(!steamReady).selectionDisabled(!steamReady)
             }
-            if entry.steamClientLaunch == true && client.snapshot.client == nil {
-                Text("Install the Windows Steam client from Settings first, then sign in to it with the same account.")
+            switch entry.steamStartMode {
+            case .dock where client.snapshot.client == nil:
+                Text("Madeira Dock needs Steam's client components. Run setup again from Settings to prepare them.")
                     .font(.caption).foregroundStyle(.orange)
+            case .steam where !steamReady:
+                Text(SteamClientOptions.enabled
+                     ? "Install regular Steam from Settings › Windows Steam client first, then sign in to it with the same account."
+                     : "Starting through regular Steam comes in a later release. Choose Madeira Dock or The game.")
+                    .font(.caption).foregroundStyle(.orange)
+            default:
+                if dock && !steamReady {
+                    Text(SteamClientOptions.enabled
+                         ? "Steam (more usage) needs regular Steam, installed from Settings › Windows Steam client."
+                         : "Steam (more usage) comes in a later release.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            // ml1780: Steam's one-time installs are marked done before a client start unless this is on.
+            // ml1970: under Madeira Dock, installs Madeira's Wine does not provide run once anyway;
+            // this also runs the DirectX / Visual C++ installers.
+            if entry.startsWithClient {
+                // ml2015 (owner request): under Madeira Dock, whether the next start runs the game's
+                // one-time installs. A fresh install runs them once; afterwards this shows Skip.
+                if entry.steamStartMode == .dock && LibraryFlags.enabled("MADEIRA_DOCK_INSTALL_CHOICE") {
+                    Picker("One-time installs", selection: Binding(get: { entry.steamInstallersNext != false },
+                                                                   set: { entry.steamInstallersNext = $0 })) {
+                        Text("Run at next start").tag(true)
+                        Text("Skip").tag(false)
+                    }.pickerStyle(.menu)
+                    if entry.steamInstallersNext != false {
+                        Toggle("Also run DirectX and Visual C++ installers",
+                               isOn: Binding(get: { entry.steamRunInstallers == true },
+                                             set: { entry.steamRunInstallers = $0 ? true : nil }))
+                    }
+                } else {
+                    Toggle(entry.steamStartMode == .dock ? "Also run DirectX and Visual C++ installers" : "Run Steam's one-time installs",
+                           isOn: Binding(get: { entry.steamRunInstallers == true },
+                                         set: { entry.steamRunInstallers = $0 ? true : nil }))
+                }
             }
             if candidates.count > 1 {
                 Picker("Program", selection: Binding(get: { entry.relativePath }, set: { select($0) })) {
@@ -460,11 +582,18 @@ struct SteamEntrySection: View {
                 Button { steam.install(appID) } label: { Label("Update available — download", systemImage: "arrow.down.circle") }
                     .disabled(steam.phase != .signedIn)
             }
+            if entry.steamNative == true, let appID = entry.steamAppID,
+               steam.downloads[appID] == nil, LibraryFlags.enabled("MADEIRA_STEAM_REPAIR") {
+                Button { steam.repair(appID) } label: { Label("Repair installed files", systemImage: "arrow.triangle.2.circlepath") }
+                    .disabled(steam.phase != .signedIn)
+                Text("Checks installed content and downloads missing or changed files from the current Steam build.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Button("Uninstall", role: .destructive) { confirmUninstall = true }
         } header: {
             Text("Steam")
         } footer: {
-            Text("Starting the game directly works for games that do not need Steam running. Games that require Steam need the Windows Steam client, signed in to the same account.")
+            Text("“The game” starts it directly, which works for games that do not need Steam running. “Steam client” starts it through the Windows Steam client, which games that require Steam need; sign in to it with the same account. “Steam client” is the default once it is installed.")
         }
         .task(id: entry.steamInstallPath) {
             guard let folder = entry.steamInstallPath.flatMap({ SteamPaths.safeRelative($0, under: LibraryModel.drive) }) else { return }
@@ -489,5 +618,54 @@ struct SteamEntrySection: View {
     private func displayName(_ path: String) -> String {
         guard let base = entry.steamInstallPath, path.hasPrefix(base + "/") else { return path }
         return String(path.dropFirst(base.count + 1))
+    }
+}
+
+/// ml1710: a game's license agreements, answered in Madeira before the Windows Steam client
+/// starts (see SteamEulaStore).
+struct SteamEulaPrompt: Identifiable {
+    let id = UUID()
+    let entry: LibraryEntry
+    let appID: Int
+    let eulas: [SteamEula]
+    let steamRoot: URL
+}
+
+struct SteamEulaSheet: View {
+    let prompt: SteamEulaPrompt
+    let accept: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("\(prompt.entry.title) asks you to accept \(prompt.eulas.count == 1 ? "a license agreement" : "\(prompt.eulas.count) license agreements") before it starts. Steam records your answer, so you are asked only once.")
+                        .font(.subheadline)
+                }
+                Section("Agreements") {
+                    ForEach(prompt.eulas, id: \.id) { eula in
+                        if let url = URL(string: eula.url), url.scheme == "https" || url.scheme == "http" {
+                            Link(destination: url) {
+                                Label(eula.name.isEmpty ? "License agreement" : eula.name, systemImage: "doc.text")
+                            }
+                        } else {
+                            Label(eula.name.isEmpty ? "License agreement" : eula.name, systemImage: "doc.text")
+                        }
+                    }
+                }
+                Section {
+                    Button(action: accept) {
+                        Text("Accept and Play").fontWeight(.semibold).frame(maxWidth: .infinity)
+                    }
+                    Button("Cancel", role: .cancel, action: cancel).frame(maxWidth: .infinity)
+                } footer: {
+                    Text("Tap an agreement to read it. Accepting records it in Steam's settings on this device, the same way the Steam client does.")
+                }
+            }
+            .navigationTitle("License Agreement")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .interactiveDismissDisabled()
     }
 }

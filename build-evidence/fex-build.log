@@ -1,0 +1,305 @@
+-- The C compiler identification is AppleClang 17.0.0.17000013
+-- The CXX compiler identification is AppleClang 17.0.0.17000013
+-- The ASM compiler identification is AppleClang
+-- Found assembler: /usr/bin/cc
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Looking for include file gdb/jit-reader.h
+-- Looking for include file gdb/jit-reader.h - not found
+-- Clang version 17.0.0.17000013
+-- Performing Test HAS_CLANG_PRESERVE_ALL
+-- Performing Test HAS_CLANG_PRESERVE_ALL - Success
+-- Has clang::preserve_all
+-- Performing Test HAS_PROGRAM_INVOCATION_NAME
+-- Performing Test HAS_PROGRAM_INVOCATION_NAME - Failed
+-- Enabling ccache 4.14
+-- Apple platform detected — disabling jemalloc and rpmalloc
+-- Found Python: /opt/homebrew/Frameworks/Python.framework/Versions/3.14/bin/python3.14 (found suitable version "3.14.7", minimum required is "3.9") found components: Interpreter
+-- xxHash build type: RELEASE
+-- Architecture: arm64
+-- {fmt} version: 12.1.0
+-- Build type: RELEASE
+-- Performing Test HAS_NULLPTR_WARNING
+-- Performing Test HAS_NULLPTR_WARNING - Success
+CMake Warning (deprecated) at External/range-v3/CMakeLists.txt:8 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+CMake Warning at External/range-v3/cmake/ranges_env.cmake:65 (message):
+  [range-v3 warning]: unknown system iOS !
+Call Stack (most recent call first):
+  External/range-v3/CMakeLists.txt:24 (include)
+
+
+CMake Warning at External/range-v3/cmake/ranges_env.cmake:92 (message):
+  [range-v3 warning]: unknown build type, defaults to release!
+Call Stack (most recent call first):
+  External/range-v3/CMakeLists.txt:24 (include)
+
+
+-- Found Git: /opt/homebrew/bin/git (found version "2.55.0")
+-- [range-v3]: C++ std=2a
+-- Performing Test RANGES_HAS_CXXSTD
+-- Performing Test RANGES_HAS_CXXSTD - Success
+-- Performing Test RANGES_HAS_WALL
+-- Performing Test RANGES_HAS_WALL - Success
+-- Performing Test RANGES_HAS_WEXTRA
+-- Performing Test RANGES_HAS_WEXTRA - Success
+-- Performing Test RANGES_HAS_WERROR
+-- Performing Test RANGES_HAS_WERROR - Success
+-- Performing Test RANGES_HAS_FDIAGNOSTIC_SHOW_TEMPLATE_TREE
+-- Performing Test RANGES_HAS_FDIAGNOSTIC_SHOW_TEMPLATE_TREE - Success
+-- Performing Test RANGES_HAS_FTEMPLATE_BACKTRACE_LIMIT
+-- Performing Test RANGES_HAS_FTEMPLATE_BACKTRACE_LIMIT - Success
+-- Performing Test RANGES_HAS_FMACRO_BACKTRACE_LIMIT
+-- Performing Test RANGES_HAS_FMACRO_BACKTRACE_LIMIT - Success
+-- Performing Test RANGES_HAS_OMIT_FRAME_POINTER
+-- Performing Test RANGES_HAS_OMIT_FRAME_POINTER - Success
+-- Performing Test RANGES_HAS_OFAST
+-- Performing Test RANGES_HAS_OFAST - Success
+-- Performing Test RANGES_HAS_STRICT_ALIASING
+-- Performing Test RANGES_HAS_STRICT_ALIASING - Success
+-- Performing Test RANGES_HAS_STRICT_VTABLE_POINTERS
+-- Performing Test RANGES_HAS_STRICT_VTABLE_POINTERS - Success
+-- Performing Test RANGES_HAS_FAST_MATH
+-- Performing Test RANGES_HAS_FAST_MATH - Success
+-- Performing Test RANGES_HAS_VECTORIZE
+-- Performing Test RANGES_HAS_VECTORIZE - Success
+-- Performing Test RANGES_HAS_SIZED_DEALLOCATION
+-- Performing Test RANGES_HAS_SIZED_DEALLOCATION - Success
+-- Performing Test RANGES_HAS_MARCH_NATIVE
+-- Performing Test RANGES_HAS_MARCH_NATIVE - Success
+-- Performing Test RANGES_HAS_MTUNE_NATIVE
+-- Performing Test RANGES_HAS_MTUNE_NATIVE - Success
+-- Performing Test RANGE_V3_ALIGNED_NEW_PROBE
+-- Performing Test RANGE_V3_ALIGNED_NEW_PROBE - Success
+-- Performing Test RANGES_HAS_FCOROUTINES_TS
+-- Performing Test RANGES_HAS_FCOROUTINES_TS - Failed
+-- Performing Test RANGE_V3_HAS_FCONCEPTS
+-- Performing Test RANGE_V3_HAS_FCONCEPTS - Failed
+-- Performing Test GCC_COLOR
+-- Performing Test GCC_COLOR - Success
+-- Performing Test CLANG_COLOR
+-- Performing Test CLANG_COLOR - Success
+-- Performing Test ENUM_ENUM_WARNING
+-- Performing Test ENUM_ENUM_WARNING - Success
+-- Performing Test COMPILER_SUPPORTS_CPU_TYPE
+-- Performing Test COMPILER_SUPPORTS_CPU_TYPE - Success
+-- FEX version: Madeira-iOS
+-- FEX commit: 7b528d8a57cb12b794c589dd7e42fff813fc9abd
+-- Performing Test HAS_SYSCALL_GETCPU
+-- Performing Test HAS_SYSCALL_GETCPU - Failed
+-- Performing Test HAS_SYSCALL_GETTID
+-- Performing Test HAS_SYSCALL_GETTID - Failed
+-- Performing Test HAS_SYSCALL_TGKILL
+-- Performing Test HAS_SYSCALL_TGKILL - Failed
+-- Performing Test HAS_SYSCALL_STATX
+-- Performing Test HAS_SYSCALL_STATX - Failed
+-- Performing Test HAS_SYSCALL_RENAMEAT2
+-- Performing Test HAS_SYSCALL_RENAMEAT2 - Failed
+-- Configuring done (8.1s)
+-- Generating done (0.1s)
+-- Build files have been written to: /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/FEX/build-ios
+[  0%] Generating ../../include/FEXCore/Config/ConfigValues.inl, ../../include/FEXCore/Config/ConfigOptions.inl, ../../generated/FEX.1
+[  1%] Generating ../../generated/FEX.1.gz
+[  1%] Built target CONFIG_INC
+[  2%] Building C object External/xxhash/cmake_unofficial/CMakeFiles/xxhash.dir/__/xxhash.c.o
+[  3%] Linking C static library libxxhash.a
+[  3%] Built target xxhash
+[  4%] Building CXX object External/fmt/CMakeFiles/fmt.dir/src/format.cc.o
+[  4%] Building CXX object External/fmt/CMakeFiles/fmt.dir/src/os.cc.o
+[  5%] Linking CXX static library libfmt.a
+[  5%] Built target fmt
+[  5%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_add.c.o
+[  6%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_div.c.o
+[  6%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_sub.c.o
+[  7%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_mul.c.o
+[  8%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_rem.c.o
+[  8%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_sqrt.c.o
+[  9%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_le.c.o
+[  9%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_to_i32.c.o
+[ 10%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_to_i64.c.o
+[ 11%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_to_ui64.c.o
+[ 11%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_to_f32.c.o
+[ 12%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_to_f64.c.o
+[ 12%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/i32_to_extF80.c.o
+[ 13%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/ui64_to_extF80.c.o
+[ 14%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_to_f128.c.o
+[ 14%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_extF80.c.o
+[ 15%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_add.c.o
+[ 15%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_div.c.o
+[ 16%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_eq.c.o
+[ 17%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_eq_signaling.c.o
+[ 17%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_isSignalingNaN.c.o
+[ 18%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_le.c.o
+[ 18%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_le_quiet.c.o
+[ 19%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_lt.c.o
+[ 20%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_lt_quiet.c.o
+[ 20%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_mulAdd.c.o
+[ 21%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_mul.c.o
+[ 21%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_rem.c.o
+[ 22%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_sqrt.c.o
+[ 23%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_sub.c.o
+[ 23%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_f16.c.o
+[ 24%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_f32.c.o
+[ 24%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_f64.c.o
+[ 25%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_i32.c.o
+[ 26%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_i64.c.o
+[ 26%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_ui32.c.o
+[ 27%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f128_to_ui64.c.o
+[ 27%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_addMagsF128.c.o
+[ 28%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_subMagsF128.c.o
+[ 29%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_normRoundPackToF128.c.o
+[ 29%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundPackToF128.c.o
+[ 30%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_propagateNaNF128UI.c.o
+[ 30%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f32_to_f128.c.o
+[ 31%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/i32_to_f128.c.o
+[ 31%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundToUI64.c.o
+[ 32%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_f128UIToCommonNaN.c.o
+[ 34%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_commonNaNToF128UI.c.o
+[ 34%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_normSubnormalF128Sig.c.o
+[ 35%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundToI32.c.o
+[ 35%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundToI64.c.o
+[ 36%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundPackToF32.c.o
+[ 37%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_addMagsExtF80.c.o
+[ 37%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_extF80UIToCommonNaN.c.o
+[ 38%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_commonNaNToF32UI.c.o
+[ 38%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_commonNaNToF64UI.c.o
+[ 39%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundPackToF64.c.o
+[ 40%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_propagateNaNExtF80UI.c.o
+[ 40%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_roundPackToExtF80.c.o
+[ 41%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_normSubnormalExtF80Sig.c.o
+[ 41%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_subMagsExtF80.c.o
+[ 42%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_shiftRightJam128.c.o
+[ 43%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_shiftRightJam128Extra.c.o
+[ 43%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_normRoundPackToExtF80.c.o
+[ 44%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_approxRecip_1Ks.c.o
+[ 44%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_approxRecipSqrt32_1.c.o
+[ 45%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_approxRecipSqrt_1Ks.c.o
+[ 46%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/softfloat_raiseFlags.c.o
+[ 46%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f64_to_extF80.c.o
+[ 47%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_commonNaNToExtF80UI.c.o
+[ 47%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_normSubnormalF64Sig.c.o
+[ 48%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_f64UIToCommonNaN.c.o
+[ 49%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_roundToInt.c.o
+[ 49%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_eq.c.o
+[ 50%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/extF80_lt.c.o
+[ 50%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/f32_to_extF80.c.o
+[ 51%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_normSubnormalF32Sig.c.o
+[ 52%] Building C object External/SoftFloat-3e/CMakeFiles/softfloat_3e.dir/src/s_f32UIToCommonNaN.c.o
+[ 52%] Linking C static library libsoftfloat_3e.a
+[ 52%] Built target softfloat_3e
+[ 53%] Building CXX object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/Impl.cpp.o
+[ 54%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/atanll.c.o
+[ 54%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/constll.c.o
+[ 55%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/exp2ll.c.o
+[ 55%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/floorll.c.o
+[ 56%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/log2ll.c.o
+[ 57%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/mtherr.c.o
+[ 57%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/polevll.c.o
+[ 58%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/sinll.c.o
+[ 58%] Building C object External/cephes/CMakeFiles/cephes_128bit.dir/src/128bit/tanll.c.o
+[ 59%] Linking CXX static library libcephes_128bit.a
+[ 59%] Built target cephes_128bit
+[ 59%] Generating ../../include/FEXCore/IR/IRDefines.inc, ../../include/FEXCore/IR/IRDefines_Dispatch.inc
+[ 60%] Generating ../../IR.md
+[ 60%] Built target IR_INC
+[ 61%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Interface/Config/Config.cpp.o
+[ 61%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Utils/Allocator.cpp.o
+[ 62%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Utils/FileLoading.cpp.o
+[ 63%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Utils/ForcedAssert.cpp.o
+[ 63%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Utils/LogManager.cpp.o
+[ 64%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Utils/SpinWaitLock.cpp.o
+[ 64%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_Base.dir/Utils/WildcardMatcher.cpp.o
+[ 65%] Linking CXX static library libFEXCore_Base.a
+[ 65%] Built target FEXCore_Base
+[ 67%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Common/JitSymbols.cpp.o
+[ 67%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Context/Context.cpp.o
+[ 68%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/LookupCache.cpp.o
+[ 68%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/CodeCache.cpp.o
+[ 69%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/Core.cpp.o
+[ 70%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/CPUBackend.cpp.o
+[ 70%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/Addressing.cpp.o
+[ 71%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/CPUID.cpp.o
+[ 71%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/Frontend.cpp.o
+[ 72%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher/AVX_128.cpp.o
+[ 73%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher/Crypto.cpp.o
+[ 73%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher/Flags.cpp.o
+[ 74%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher/Vector.cpp.o
+[ 74%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher/X87.cpp.o
+[ 75%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher/X87F64.cpp.o
+[ 76%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/OpcodeDispatcher.cpp.o
+[ 76%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/ArchHelpers/Arm64Emitter.cpp.o
+[ 77%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/Dispatcher/Dispatcher.cpp.o
+[ 77%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/Interpreter/Fallbacks/InterpreterFallbacks.cpp.o
+[ 78%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/Interpreter/Fallbacks/StringCompareFallbacks.cpp.o
+[ 79%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/JIT.cpp.o
+[1m/Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/FEX/FEXCore/Source/Interface/Core/JIT/JIT.cpp:1110:11: [0m[0;1;35mwarning: [0m[1mvariable 'OpIdx' set but not used [-Wunused-but-set-variable][0m
+ 1110 |       [0;34mint[0m OpIdx = [0;32m0[0m;[0m
+      | [0;1;32m          ^
+[0m1 warning generated.
+[ 79%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/ALUOps.cpp.o
+[ 80%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/AtomicOps.cpp.o
+[ 80%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/BranchOps.cpp.o
+[ 81%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/ConversionOps.cpp.o
+[ 82%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/EncryptionOps.cpp.o
+[ 82%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/MemoryOps.cpp.o
+[ 83%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/MiscOps.cpp.o
+[ 83%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/MoveOps.cpp.o
+[ 84%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/VectorOps.cpp.o
+[ 85%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/JIT/Arm64Relocations.cpp.o
+[ 85%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/BaseTables.cpp.o
+[ 86%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/DDDTables.cpp.o
+[ 86%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/H0F38Tables.cpp.o
+[ 87%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/H0F3ATables.cpp.o
+[ 87%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/PrimaryGroupTables.cpp.o
+[ 88%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/SecondaryGroupTables.cpp.o
+[ 89%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/SecondaryModRMTables.cpp.o
+[ 89%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/SecondaryTables.cpp.o
+[ 90%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/VEXTables.cpp.o
+[ 90%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/Core/X86Tables/X87Tables.cpp.o
+[ 91%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/GDBJIT/GDBJIT.cpp.o
+[ 92%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/IRDumper.cpp.o
+[ 92%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/IREmitter.cpp.o
+[ 93%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/PassManager.cpp.o
+[ 93%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/Passes/IRDumperPass.cpp.o
+[ 94%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/Passes/IRValidation.cpp.o
+[ 95%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/Passes/RedundantFlagCalculationElimination.cpp.o
+[ 95%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/Passes/RegisterAllocationPass.cpp.o
+[ 96%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Interface/IR/Passes/x87StackOptimizationPass.cpp.o
+[ 96%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Utils/AllocWatch.cpp.o
+[1m/Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/FEX/FEXCore/Source/Utils/AllocWatch.cpp:86:15: [0m[0;1;35mwarning: [0m[1munused function 'EventName' [-Wunused-function][0m
+   86 |   [0;34mconst[0m [0;34mchar[0m* EventName(uint32_t Event) {[0m
+      | [0;1;32m              ^~~~~~~~~
+[0m1 warning generated.
+[ 97%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Utils/LongJump.cpp.o
+[ 98%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Utils/Telemetry.cpp.o
+[ 98%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Utils/Threads.cpp.o
+[100%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Utils/Profiler.cpp.o
+[100%] Building CXX object FEXCore/Source/CMakeFiles/FEXCore_object.dir/Utils/ArchHelpers/Arm64.cpp.o
+[100%] Built target FEXCore_object
+[100%] Linking CXX static library libFEXCore.a
+[100%] Built target FEXCore
+[  1%] Built target CONFIG_INC
+[  4%] Built target xxhash
+[  7%] Built target fmt
+[ 79%] Built target softfloat_3e
+[ 90%] Built target cephes_128bit
+[ 92%] Built target IR_INC
+[100%] Built target FEXCore_Base
+/Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/FEX/build-ios/FEXCore/Source/libFEXCore_Base.a
+/Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/FEX/build-ios/FEXCore/Source/libFEXCore.a

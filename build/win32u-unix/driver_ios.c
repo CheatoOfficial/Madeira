@@ -156,6 +156,16 @@ void winios_drv_post_mouse(int x, int y, unsigned int flags, unsigned int mouse_
  * VK_ESCAPE=0x1B, ...); flags is 0 for key-down, KEYEVENTF_KEYUP (0x2)
  * for key-up. Scan code derived via the default layout so games reading
  * scan codes (DirectInput-style) see something plausible. */
+int winios_drv_foreground_if_owner( HWND hwnd )
+{
+    /* ml2015: Winios.m restores a window whose first show was minimized, as a taskbar
+     * click does; a taskbar click also brings it to the front. Only the window's own
+     * thread does that, from its event pump (not inside SetWindowPos). Returns 0 on
+     * another thread, 1 when the window is now foreground, -1 on failure. */
+    if (!hwnd || get_window_thread( hwnd, NULL ) != GetCurrentThreadId()) return 0;
+    return NtUserSetForegroundWindow( hwnd ) ? 1 : -1;
+}
+
 void winios_drv_post_key(unsigned short vk, unsigned int flags)
 {
     INPUT input = {0};
@@ -453,7 +463,7 @@ void winios_dump_window_tree(void)
 /* Implemented in app/Madeira/Winios/Winios.m (weak, same pattern as the
  * driver hooks below). Called on wine threads — the app side copies the
  * bits before returning and uploads on the main thread. */
-extern void winios_surface_present( HWND hwnd, int dirty_x, int dirty_y, int dirty_w, int dirty_h,
+extern int winios_surface_present( HWND hwnd, int dirty_x, int dirty_y, int dirty_w, int dirty_h,
                                     int surf_w, int surf_h, int stride, const void *bits ) __attribute__((weak));
 extern void winios_window_frame( HWND hwnd, int x, int y, int w, int h, int visible,
                                  int cx, int cy, int cw, int ch ) __attribute__((weak));
@@ -870,10 +880,15 @@ static BOOL winios_surface_flush( struct window_surface *surface, const RECT *re
         if (winios_overlay_skip_hwnd && winios_overlay_skip_hwnd( surface->hwnd )) return TRUE;
         winios_overlay_log_first( surface->hwnd, surf_w, surf_h );
         winios_overlay_log_flush( surface, dirty );
-        winios_surface_present( surface->hwnd,
-                                dirty->left, dirty->top,
-                                dirty->right - dirty->left, dirty->bottom - dirty->top,
-                                surf_w, surf_h, surf_w * 4, color_bits );
+        /* ml1028: propagate the snapshot allocation result. dce.c only calls
+         * reset_bounds() when we return TRUE, so returning FALSE keeps the
+         * dirty region and the frame is repainted on a later flush instead of
+         * the copy throwing an uncaught ObjC exception and killing us. */
+        if (!winios_surface_present( surface->hwnd,
+                                     dirty->left, dirty->top,
+                                     dirty->right - dirty->left, dirty->bottom - dirty->top,
+                                     surf_w, surf_h, surf_w * 4, color_bits ))
+            return FALSE;
     }
     return TRUE;
 }
@@ -982,11 +997,68 @@ static void winios_drv_window_pos_changed( HWND hwnd, HWND insert_after, HWND ow
      * side keeps that gate, so its backdrop can still never cover a game. */
     if (winios_window_frame && (winios_desktop_mode() || winios_direct_overlay()))
     {
-        const RECT *v = &new_rects->visible;
-        const RECT *c = &new_rects->client;
+        RECT vr = new_rects->visible, cr = new_rects->client;
+        const RECT *v = &vr, *c = &cr;
         int visible = !IsRectEmpty( v ) && !(swp_flags & SWP_HIDEWINDOW);
+        /* ml1690: a CHILD window's rects arrive in its parent's client
+         * coordinates, but every window layer is a sibling under the one
+         * compositor root, framed in desktop pixels. So a child with its own
+         * layer -- the embedded browser view of a sign-in dialog, drawn through
+         * a swapchain -- was placed at the desktop's origin instead of inside
+         * its dialog. Map child rects to the desktop first.
+         * MADEIRA_CHILD_LAYER_SCREEN=0 restores parent-relative placement. */
+        {
+            static int enabled = -1;
+            HWND parent = NtUserGetAncestor( hwnd, GA_PARENT );
+            if (enabled < 0) { const char *e = getenv( "MADEIRA_CHILD_LAYER_SCREEN" ); enabled = !(e && e[0] == '0'); }
+            if (enabled && parent && parent != get_desktop_window())
+            {
+                UINT dpi = get_thread_dpi();
+                map_window_points( parent, 0, (POINT *)&vr, 2, dpi );
+                map_window_points( parent, 0, (POINT *)&cr, 2, dpi );
+            }
+        }
         winios_window_frame( hwnd, v->left, v->top, v->right - v->left, v->bottom - v->top, visible,
                              c->left, c->top, c->right - c->left, c->bottom - c->top );
+
+        /* ml1690: children do not get a WindowPosChanged when only their parent
+         * moves (their parent-relative rects are unchanged), so their layers
+         * would stay where the dialog used to be. Re-send the direct children's
+         * desktop rects whenever a top-level window moves or resizes. */
+        if (!(swp_flags & SWP_NOMOVE) || !(swp_flags & SWP_NOSIZE))
+        {
+            HWND parent = NtUserGetAncestor( hwnd, GA_PARENT );
+            const char *e = getenv( "MADEIRA_CHILD_LAYER_SCREEN" );
+            if (!(e && e[0] == '0') && (!parent || parent == get_desktop_window()))
+            {
+                HWND *list = list_window_children( hwnd );
+                UINT dpi = get_thread_dpi();
+                int i;
+                for (i = 0; list && list[i] && i < 64; i++)
+                {
+                    RECT wr, cl;
+                    DWORD style = NtUserGetWindowLongW( list[i], GWL_STYLE );
+                    if (!NtUserGetWindowRect( list[i], &wr, dpi ) || !NtUserGetClientRect( list[i], &cl, dpi )) continue;
+                    map_window_points( list[i], 0, (POINT *)&cl, 2, dpi );
+                    winios_window_frame( list[i], wr.left, wr.top, wr.right - wr.left, wr.bottom - wr.top,
+                                         (style & WS_VISIBLE) && !IsRectEmpty( &wr ),
+                                         cl.left, cl.top, cl.right - cl.left, cl.bottom - cl.top );
+                    {
+                        static unsigned logged;
+                        if (logged < 60)
+                        {
+                            logged++;
+                            dprintf( 2, "[child-layer] ml1730 parent=%p flags=%#x child=%p window={%d,%d,%d,%d} "
+                                        "client={%d,%d,%d,%d} vis=%d\n", hwnd, swp_flags, list[i],
+                                     (int)wr.left, (int)wr.top, (int)wr.right, (int)wr.bottom,
+                                     (int)cl.left, (int)cl.top, (int)cl.right, (int)cl.bottom,
+                                     (style & WS_VISIBLE) ? 1 : 0 );
+                        }
+                    }
+                }
+                free( list );
+            }
+        }
     }
 
     /* ml1110 — THE OTHER HALF OF "WHY IS THE CLIENT AREA BLANK": the windows
@@ -1042,6 +1114,29 @@ static void winios_drv_window_pos_changed( HWND hwnd, HWND insert_after, HWND ow
             dprintf( 2, "[win-pos] #%u hwnd=%p after=%p flags=%08x vis={%d,%d,%d,%d} "
                      "surface=%p rev=ml505\n", n, hwnd, insert_after, (unsigned)swp_flags,
                      (int)v->left, (int)v->top, (int)v->right, (int)v->bottom, surface );
+            /* ml853: name the window. A dialog nobody can see (nothing is
+             * presenting) is otherwise just a rectangle; the class and the
+             * text of every window, children included, make it readable
+             * from the log. Static controls carry a message box's body. */
+            {
+                WCHAR clsW[64], txtW[200];
+                char cls[64], txt[200];
+                UNICODE_STRING us = { 0, sizeof(clsW), clsW };
+                int j, tn;
+                cls[0] = 0;
+                if (NtUserGetClassName( hwnd, FALSE, &us ) > 0)
+                {
+                    for (j = 0; j < us.Length / (int)sizeof(WCHAR) && j < 63; j++)
+                        cls[j] = (clsW[j] >= 32 && clsW[j] < 127) ? (char)clsW[j] : '?';
+                    cls[j] = 0;
+                }
+                tn = NtUserInternalGetWindowText( hwnd, txtW, ARRAY_SIZE(txtW) );
+                for (j = 0; j < tn && j < 199; j++)
+                    txt[j] = (txtW[j] >= 32 && txtW[j] < 127) ? (char)txtW[j] : '?';
+                txt[j] = 0;
+                if (cls[0] || txt[0])
+                    dprintf( 2, "[win-name] #%u hwnd=%p class='%s' text=\"%s\" rev=ml853\n", n, hwnd, cls, txt );
+            }
         }
     }
     /* ml750: an EMPTY visible rect used to be filtered out here (to keep the
@@ -2695,3 +2790,4 @@ struct client_surface *nulldrv_client_surface_create( HWND hwnd )
 {
     return client_surface_create( sizeof(struct client_surface), &nulldrv_surface_funcs, hwnd );
 }
+

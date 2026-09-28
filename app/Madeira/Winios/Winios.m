@@ -406,8 +406,236 @@ BOOL winios_pCreateWindow(HWND hwnd) {
 
 static void winios_remove_layer(HWND hwnd);   /* compositor, below */
 
+/* ============================================================ *
+ * ml1490 — top-level window census (see Winios.h)
+ * ============================================================
+ *
+ * A game started through the Windows Steam client runs in a desktop session:
+ * explorer, the client, its Chromium helper and their console hosts all put
+ * windows up before the game does. Device logs 185-187 show the pattern: the
+ * helper's console window (titled with its path), explorer's small tray window,
+ * hidden client windows, and only later the game's own window, each from a
+ * different thread. Nothing on the app side could tell those apart, so the
+ * starting screen went away on the desktop's first GDI frame.
+ *
+ * The one fact that separates them generically is WHICH PROGRAM owns the
+ * window. win32u knows the owning process id (get_window_thread, the same call
+ * [winios-tree] makes) and the server knows every process's image path
+ * (SystemProcessIdInformation, which asks it by id without opening a handle).
+ * Both are read on the wine thread inside the WindowPosChanged hook, where
+ * win32u itself has just made the same kind of calls; each process's name is
+ * looked up once. The app decides what the names mean.
+ *
+ * Only while the app has switched it on (winios_window_census_enable), so a
+ * normal session never pays a lookup. */
+#define WINIOS_GA_PARENT     1
+#define WINIOS_GWL_STYLE     (-16)
+#define WINIOS_WS_CHILD      0x40000000u
+#define WINIOS_WS_VISIBLE    0x10000000u
+#define WINIOS_WS_MINIMIZE   0x20000000u
+#define WINIOS_SYSTEM_PROCESS_ID_INFORMATION 88
+
+/* win32u / ntdll unix entry points, linked into the same image. Declared by
+ * hand for the reason given at the top of this file: the Wine headers collide
+ * with Apple's. Wine's LONG/ULONG/DWORD/UINT are all 32-bit here. */
+extern HWND NtUserGetAncestor(HWND hwnd, unsigned int type);
+extern unsigned int get_window_thread(HWND hwnd, unsigned int *process);
+extern int get_window_long(HWND hwnd, int offset);
+extern int NtQuerySystemInformation(int info_class, void *info, unsigned int size, unsigned int *ret_size);
+extern int NtUserPostMessage(HWND hwnd, unsigned int msg, uintptr_t wparam, intptr_t lparam);
+
+/* ml2015 (device log 109): a game started by the Steam client showed its main
+ * window minimized the first time it was shown (ShowWindow cmd 2, the window
+ * parked at -32000,-32000). On Windows the taskbar brings it back; Madeira has
+ * no taskbar, so the starting screen waited for a window that never appeared.
+ * While the census runs, a top-level window whose first show is minimized is
+ * sent what a taskbar click sends: WM_SYSCOMMAND/SC_RESTORE, once. A window
+ * that was shown and later minimized itself (e.g. on losing focus) is left
+ * alone. MADEIRA_RESTORE_BORN_MINIMIZED=0 turns this off. */
+#define WINIOS_WM_SYSCOMMAND 0x0112u
+#define WINIOS_SC_RESTORE    0xF120u
+/* Device log 112: restored, the window was shown but the game stayed idle and never
+ * made its D3D device (a fullscreen game pauses without focus). A taskbar click also
+ * brings the window to the front: its own thread does that from its event pump. */
+extern int winios_drv_foreground_if_owner(HWND hwnd);
+static _Atomic(uintptr_t) g_restore_foreground;
+static int winios_restore_born_minimized_enabled(void) {
+    static int enabled = -1;
+    if (enabled < 0) { const char *e = getenv("MADEIRA_RESTORE_BORN_MINIMIZED"); enabled = !(e && e[0] == '0'); }
+    return enabled;
+}
+
+/* SYSTEM_PROCESS_ID_INFORMATION: a process id and a UNICODE_STRING the caller
+ * points at its own buffer (Length must be 0 on input). */
+struct winios_process_id_info {
+    void *pid;
+    unsigned short length, maximum;
+    unsigned short *buffer;
+};
+
+static pthread_mutex_t g_census_lock = PTHREAD_MUTEX_INITIALIZER;
+static _Atomic int g_census_on;
+static struct winios_census_window g_census[WINIOS_CENSUS_MAX];
+static int g_census_n;
+#define WINIOS_CENSUS_IMAGES 48
+static struct { unsigned int pid; int known; char image[48]; } g_census_images[WINIOS_CENSUS_IMAGES];
+static int g_census_images_n;
+static _Atomic unsigned g_census_failures;
+
+/* The owning program's executable base name, lower case ASCII, "" when the
+ * server could not name it. Cached per process id for the census's lifetime.
+ * Wine thread only (the lookup is a server call). */
+static int winios_census_image(unsigned int pid, char out[48]) {
+    out[0] = 0;
+    if (!pid) return 0;
+    pthread_mutex_lock(&g_census_lock);
+    for (int i = 0; i < g_census_images_n; i++) {
+        if (g_census_images[i].pid != pid) continue;
+        memcpy(out, g_census_images[i].image, 48);
+        int known = g_census_images[i].known;
+        pthread_mutex_unlock(&g_census_lock);
+        return known;
+    }
+    pthread_mutex_unlock(&g_census_lock);
+
+    unsigned short path[520];
+    struct winios_process_id_info info = { (void *)(uintptr_t)pid, 0, sizeof(path) - sizeof(path[0]), path };
+    unsigned int got = 0;
+    int status = NtQuerySystemInformation(WINIOS_SYSTEM_PROCESS_ID_INFORMATION, &info, sizeof(info), &got);
+    int known = 0;
+    if (!status && info.buffer == path && info.length < sizeof(path)) {
+        size_t n = info.length / sizeof(path[0]), start = 0, j = 0;
+        for (size_t i = 0; i < n; i++) if (path[i] == '\\' || path[i] == '/') start = i + 1;
+        for (size_t i = start; i < n && j < 47; i++) {
+            unsigned short c = path[i];
+            out[j++] = c >= 'A' && c <= 'Z' ? (char)(c + 32) : (c >= 32 && c < 127 ? (char)c : '?');
+        }
+        out[j] = 0;
+        known = j > 0;
+    } else if (atomic_fetch_add(&g_census_failures, 1) < 4) {
+        fprintf(stderr, "[window-census] ml1490 no image name for pid %04x status=%08x\n", pid, (unsigned)status);
+        fflush(stderr);
+    }
+    pthread_mutex_lock(&g_census_lock);
+    if (g_census_images_n < WINIOS_CENSUS_IMAGES) {
+        g_census_images[g_census_images_n].pid = pid;
+        g_census_images[g_census_images_n].known = known;
+        memcpy(g_census_images[g_census_images_n].image, out, 48);
+        g_census_images_n++;
+    }
+    pthread_mutex_unlock(&g_census_lock);
+    return known;
+}
+
+/* Caller holds g_census_lock. */
+static struct winios_census_window *winios_census_find(HWND hwnd) {
+    for (int i = 0; i < g_census_n; i++)
+        if (g_census[i].hwnd == (unsigned long long)(uintptr_t)hwnd) return &g_census[i];
+    return NULL;
+}
+
+/* Wine thread, from winios_window_frame (the WindowPosChanged hook, which runs
+ * on the window's own thread). Records top-level windows only. */
+static void winios_census_note_frame(HWND hwnd, int x, int y, int w, int h, int visible) {
+    if (!atomic_load_explicit(&g_census_on, memory_order_relaxed) || !hwnd) return;
+    /* win32u calls stay outside the census lock: they take win32u's own. */
+    unsigned int style = (unsigned int)get_window_long(hwnd, WINIOS_GWL_STYLE);
+    if (style & WINIOS_WS_CHILD) return;
+    if (!NtUserGetAncestor(hwnd, WINIOS_GA_PARENT)) return;       /* the desktop itself */
+    unsigned int pid = 0;
+    get_window_thread(hwnd, &pid);
+    char image[48];
+    winios_census_image(pid, image);
+    int shown = visible && (style & WINIOS_WS_VISIBLE) && !(style & WINIOS_WS_MINIMIZE) && w > 0 && h > 0;
+    int born_minimized = 0;
+
+    pthread_mutex_lock(&g_census_lock);
+    struct winios_census_window *e = winios_census_find(hwnd);
+    if (!e && g_census_n < WINIOS_CENSUS_MAX) e = &g_census[g_census_n++];
+    if (!e && shown) {
+        /* Full: reuse a hidden window's slot rather than lose a shown one. */
+        for (int i = 0; i < g_census_n && !e; i++) if (!g_census[i].visible) e = &g_census[i];
+    }
+    if (e) {
+        if (e->hwnd != (unsigned long long)(uintptr_t)hwnd) memset(e, 0, sizeof(*e));
+        e->hwnd = (unsigned long long)(uintptr_t)hwnd;
+        e->x = x; e->y = y; e->w = w; e->h = h;
+        e->pid = pid;
+        e->visible = (unsigned char)shown;
+        memcpy(e->image, image, sizeof(e->image));
+        if (shown) e->shown_once = 1;
+        else if ((style & WINIOS_WS_VISIBLE) && (style & WINIOS_WS_MINIMIZE) && !e->shown_once && !e->restore_sent &&
+                 winios_restore_born_minimized_enabled()) {
+            e->restore_sent = 1;
+            born_minimized = 1;
+        }
+    }
+    pthread_mutex_unlock(&g_census_lock);
+    if (born_minimized) {
+        /* Posted, not sent: this runs inside the window's WindowPosChanged. */
+        int ok = NtUserPostMessage(hwnd, WINIOS_WM_SYSCOMMAND, WINIOS_SC_RESTORE, 0);
+        atomic_store(&g_restore_foreground, (uintptr_t)hwnd);
+        fprintf(stderr, "[born-minimized] ml2015 hwnd=%p pid=%04x image=%s restore-posted=%d "
+                        "(MADEIRA_RESTORE_BORN_MINIMIZED=0 leaves it minimized)\n", hwnd, pid, image, ok ? 1 : 0);
+        fflush(stderr);
+    }
+}
+
+/* Wine thread, from the GDI flush: count frames of listed windows only. */
+static void winios_census_note_present(HWND hwnd) {
+    if (!atomic_load_explicit(&g_census_on, memory_order_relaxed)) return;
+    pthread_mutex_lock(&g_census_lock);
+    struct winios_census_window *e = winios_census_find(hwnd);
+    if (e && e->presents < 0xffffffffu) e->presents++;
+    pthread_mutex_unlock(&g_census_lock);
+}
+
+/* A desktop-mode swapchain was made for this window (any thread). A swapchain
+ * on a child window is not listed; the app also watches DXMT's present count. */
+static void winios_census_note_metal(HWND hwnd) {
+    if (!atomic_load_explicit(&g_census_on, memory_order_relaxed)) return;
+    pthread_mutex_lock(&g_census_lock);
+    struct winios_census_window *e = winios_census_find(hwnd);
+    if (e) e->metal = 1;
+    pthread_mutex_unlock(&g_census_lock);
+}
+
+static void winios_census_forget(HWND hwnd) {
+    if (!atomic_load_explicit(&g_census_on, memory_order_relaxed)) return;
+    pthread_mutex_lock(&g_census_lock);
+    struct winios_census_window *e = winios_census_find(hwnd);
+    if (e) { *e = g_census[--g_census_n]; memset(&g_census[g_census_n], 0, sizeof(g_census[0])); }
+    pthread_mutex_unlock(&g_census_lock);
+}
+
+void winios_window_census_enable(int on) {
+    pthread_mutex_lock(&g_census_lock);
+    int was = atomic_load(&g_census_on);
+    g_census_n = 0;
+    g_census_images_n = 0;
+    memset(g_census, 0, sizeof(g_census));
+    atomic_store(&g_census_on, on ? 1 : 0);
+    pthread_mutex_unlock(&g_census_lock);
+    if (!was != !on) {
+        fprintf(stderr, "[window-census] ml1490 %s\n", on ? "on" : "off");
+        fflush(stderr);
+    }
+}
+
+int winios_window_census(struct winios_census_window *out, int max) {
+    if (!out || max <= 0) return 0;
+    pthread_mutex_lock(&g_census_lock);
+    int n = g_census_n < max ? g_census_n : max;
+    memcpy(out, g_census, (size_t)n * sizeof(*out));
+    pthread_mutex_unlock(&g_census_lock);
+    return n;
+}
+
 void winios_pDestroyWindow(HWND hwnd) {
     WLOG("pDestroyWindow hwnd=%p", hwnd);
+    uintptr_t pending = (uintptr_t)hwnd;
+    atomic_compare_exchange_strong(&g_restore_foreground, &pending, 0);   /* ml2015 */
+    winios_census_forget(hwnd);
     winios_remove_layer(hwnd);
 }
 
@@ -824,6 +1052,16 @@ void winios_post_key_ex(int vk, int down, unsigned int extra) {
 void winios_post_key(int vk, int down) { winios_post_key_ex(vk, down, 0); }
 
 BOOL winios_pProcessEvents(DWORD mask) {
+    /* ml2015: the restored window's own thread brings it to the front (see
+     * g_restore_foreground); other threads leave the request in place. */
+    uintptr_t fg = atomic_load_explicit(&g_restore_foreground, memory_order_relaxed);
+    if (fg) {
+        int r = winios_drv_foreground_if_owner((HWND)fg);
+        if (r && atomic_compare_exchange_strong(&g_restore_foreground, &fg, 0)) {
+            fprintf(stderr, "[born-minimized] ml2015 hwnd=%p foreground=%d\n", (HWND)fg, r);
+            fflush(stderr);
+        }
+    }
     static unsigned int cnt;
     static int quiet = -1;
     if (quiet < 0) quiet = getenv("MADEIRA_QUIET") != NULL;
@@ -853,6 +1091,25 @@ BOOL winios_pProcessEvents(DWORD mask) {
     }
     BOOL drained = FALSE;
     unsigned int depth = 0;
+    /* ml1530: ONE DRAINER AT A TIME. Every GUI thread's message pump lands
+     * here, and the pop below is locked but the post after it is not, so two
+     * threads could each take one event and post them in the wrong order:
+     * device log 198 drained a click as down then up and posted it to wine as
+     * up then down (#267 flags=0x4, #268 flags=0x2), which leaves the button
+     * held and the click lost (a dialog's accept did nothing). A thread that
+     * finds another one draining returns; that one empties the whole queue in
+     * order. MADEIRA_INPUT_DRAIN_ORDER=0 restores concurrent draining. */
+    static pthread_mutex_t drain_lock = PTHREAD_MUTEX_INITIALIZER;
+    static int ordered = -1;
+    if (ordered < 0) {
+        const char *o = getenv("MADEIRA_INPUT_DRAIN_ORDER");
+        ordered = !(o && o[0] == '0');
+    }
+    if (ordered && pthread_mutex_trylock(&drain_lock) != 0) {
+        static unsigned busy;
+        if (busy++ < 4) { fprintf(stderr, "[input-order] ml1530 drain busy on another thread; left to it (n=%u)\n", busy); fflush(stderr); }
+        return FALSE;
+    }
     for (;;) {
         winios_input_event_t e;
         pthread_mutex_lock(&g_input_q.lock);
@@ -909,6 +1166,7 @@ BOOL winios_pProcessEvents(DWORD mask) {
             winios_drv_post_mouse(e.x, e.y, e.flags, e.data, NULL);
         drained = TRUE;
     }
+    if (ordered) pthread_mutex_unlock(&drain_lock);
     winios_q_report(depth);
     return drained;
 }
@@ -1002,6 +1260,52 @@ static NSMutableDictionary<NSNumber *, NSValue *> *g_surf_sizes; /* hwnd → sur
 static NSMutableDictionary<NSNumber *, NSValue *> *g_surf_org;   /* hwnd → surface origin, window-local px */
 static NSMutableDictionary<NSNumber *, CAMetalLayer *> *g_metal_layers; /* hwnd → DXMT layer */
 static NSMutableDictionary<NSNumber *, NSValue *> *g_client_rects;      /* hwnd → client px rect */
+/* ml2000: hwnd → PEB of the process that framed it (main thread only). A
+ * process that dies without destroying its windows (crash, TerminateProcess)
+ * never runs pDestroyWindow, and its last frame stayed on screen after exit.
+ * MADEIRA_WINIOS_EXIT_SWEEP=0 keeps such layers. */
+static NSMutableDictionary<NSNumber *, NSNumber *> *g_hwnd_owner;
+/* ml2000: desktop fit state (winios_desktop_fit below), main thread only. */
+static NSNumber *g_fit_key;
+static CGRect g_fit_client_px;   /* the window's client rect, desktop px */
+static CGRect g_fit_view_pt;     /* where it is shown, compositor-view points */
+extern void *madeira_current_peb(void) __attribute__((weak));
+static uintptr_t winios_caller_owner(void) {
+    if ([NSThread isMainThread] || !madeira_current_peb) return 0;
+    static int enabled = -1;
+    if (enabled < 0) { const char *e = getenv("MADEIRA_WINIOS_EXIT_SWEEP"); enabled = !(e && e[0] == '0'); }
+    return enabled ? (uintptr_t)madeira_current_peb() : 0;
+}
+static void winios_note_owner(NSNumber *key, uintptr_t owner) {   /* main thread */
+    if (!owner) return;
+    if (!g_hwnd_owner) g_hwnd_owner = [NSMutableDictionary new];
+    g_hwnd_owner[key] = @(owner);
+}
+
+/* ml2000: called by ntdll's exit wrapper on a thread of the exiting process. */
+void winios_process_exited(void *peb) {
+    uintptr_t owner = (uintptr_t)peb;
+    if (!owner) return;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (!g_hwnd_owner.count) return;
+        NSMutableArray<NSNumber *> *gone = [NSMutableArray new];
+        [g_hwnd_owner enumerateKeysAndObjectsUsingBlock:^(NSNumber *key, NSNumber *value, BOOL *stop) {
+            if (value.unsignedLongLongValue == owner) [gone addObject:key];
+        }];
+        if (!gone.count) return;
+        unsigned metal = 0;
+        for (NSNumber *key in gone) {
+            HWND hwnd = (HWND)(uintptr_t)key.unsignedLongLongValue;
+            [g_hwnd_owner removeObjectForKey:key];
+            if (g_metal_layers[key]) metal++;
+            winios_census_forget(hwnd);
+            winios_remove_layer(hwnd);
+        }
+        fprintf(stderr, "[winios] ml2000 process exit: retired %lu window layer(s), %u Metal\n",
+                (unsigned long)gone.count, metal);
+        fflush(stderr);
+    });
+}
 static void winios_place_metal_layer(NSNumber *key);
 
 /* ml1110 — MADEIRA_SURFACE_EXACT=0 restores the pre-ml1110 placement (layer
@@ -1200,6 +1504,23 @@ void winios_set_compositor_frame(double x, double y, double w, double h) {
  * letterboxes the guest desktop inside its frame, and a GUEST mode change
  * moves that mapping without moving the frame — so winios_set_compositor_frame
  * (which deliberately skips a no-op frame) can never notice it. */
+/* ml1530: the library front end hides a desktop session's compositor view once
+ * the session has ended (it sits directly on the app window above the library
+ * and otherwise keeps the last frame: device log prev-20, a frozen installer
+ * desktop after setup finished), and shows it again for the next session.
+ * Returns 1 when there was a view to change. */
+int winios_compositor_set_hidden(int hidden) {
+    if (!g_compositor_view) return 0;
+    BOOL h = hidden ? YES : NO;
+    if (NSThread.isMainThread) {
+        if (g_compositor_view.hidden == h) return 0;
+        g_compositor_view.hidden = h;
+    } else {
+        dispatch_async(dispatch_get_main_queue(), ^{ g_compositor_view.hidden = h; });
+    }
+    return 1;
+}
+
 void winios_compositor_relayout(void) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (g_compositor_view) winios_layout_compositor();
@@ -1225,9 +1546,16 @@ static void winios_ensure_compositor(void) {
     g_compositor_view = [[UIView alloc] initWithFrame:win.bounds];
     g_compositor_view.userInteractionEnabled = NO;  /* touches fall through */
     g_compositor_view.clipsToBounds = YES;
-    /* letterbox area: near-black; desktop area: classic teal (until
-     * explorer's own background paint works) */
-    g_compositor_view.backgroundColor = [UIColor colorWithWhite:0.08 alpha:1.0];
+    /* letterbox area: black; desktop area: classic teal (until explorer's own
+     * background paint works).
+     * ml1490: the letterbox was 8 % grey, so a portrait phone showed grey bands
+     * above and below the desktop where a direct launch shows black (its host
+     * view is black). This view exists only in the live view of a desktop
+     * session. MADEIRA_LIVE_BLACK_BARS=0 restores the grey. */
+    const char *bars = getenv("MADEIRA_LIVE_BLACK_BARS");
+    int black = !(bars && bars[0] == '0');
+    g_compositor_view.backgroundColor = black ? UIColor.blackColor : [UIColor colorWithWhite:0.08 alpha:1.0];
+    fprintf(stderr, "[live-bars] ml1490 desktop letterbox=%s\n", black ? "black" : "grey");
     g_desk_bg = [CALayer layer];
     g_desk_bg.backgroundColor = [UIColor colorWithRed:0.0 green:0.502 blue:0.502 alpha:1.0].CGColor;
     [g_compositor_view.layer addSublayer:g_desk_bg];
@@ -1283,6 +1611,7 @@ static void winios_remove_layer(HWND hwnd) {
             [ml removeFromSuperlayer];
             [g_metal_layers removeObjectForKey:key];
             [g_client_rects removeObjectForKey:key];
+            if (g_fit_key && [g_fit_key isEqual:key]) g_fit_key = nil;   /* ml2000 */
             fprintf(stderr, "[winios] metal layer removed for hwnd=%p\n", hwnd);
             fflush(stderr);
         }
@@ -1304,6 +1633,54 @@ static void winios_remove_layer(HWND hwnd) {
 /* main thread only — frame the metal sublayer to the client rect in the
  * parent (window) layer's coordinate space. Parent bounds are the window
  * rect in points, so client offset = (client_px - window_px) * scale. */
+/* ml2000: DESKTOP FIT. A presenting window whose client area does not fit the
+ * wine desktop (a 1920x1080 window on a 1280x720 desktop) was cropped: only its
+ * top-left showed, under a title bar, which looked like a frozen, non-fullscreen
+ * game. Its Metal layer is instead aspect-fitted to the whole desktop, and taps
+ * and the arrow are mapped through the same rectangle so the program still gets
+ * its own client coordinates. Main thread only. MADEIRA_DESKTOP_FIT=0 crops. */
+static int winios_desktop_fit_enabled(void) {
+    static int enabled = -1;
+    if (enabled < 0) { const char *e = getenv("MADEIRA_DESKTOP_FIT"); enabled = !(e && e[0] == '0'); }
+    return enabled;
+}
+static BOOL winios_desktop_fit(NSNumber *key, CAMetalLayer *ml, CGRect c) {
+    int desk_w = 0, desk_h = 0;
+    winios_screen_size(&desk_w, &desk_h);
+    CGRect desk = CGRectMake(0, 0, desk_w, desk_h);
+    BOOL outside = desk_w > 0 && desk_h > 0 && c.size.width >= 64 && c.size.height >= 64
+        && !CGRectContainsRect(CGRectInset(desk, -8, -8), c);
+    if (!winios_desktop_fit_enabled() || !outside || !ml.superlayer || !g_compositor_view) {
+        if (g_fit_key && [g_fit_key isEqual:key]) g_fit_key = nil;
+        return NO;
+    }
+    CGFloat k = MIN(desk_w / c.size.width, desk_h / c.size.height) * g_px_to_pt;
+    CGSize sz = CGSizeMake(c.size.width * k, c.size.height * k);
+    CGRect view = CGRectMake(g_desk_origin.x + (desk_w * g_px_to_pt - sz.width) / 2,
+                             g_desk_origin.y + (desk_h * g_px_to_pt - sz.height) / 2, sz.width, sz.height);
+    ml.frame = [ml.superlayer convertRect:view fromLayer:g_compositor_view.layer];
+    BOOL changed = !g_fit_key || ![g_fit_key isEqual:key] || !CGRectEqualToRect(g_fit_client_px, c);
+    g_fit_key = key; g_fit_client_px = c; g_fit_view_pt = view;
+    static unsigned logged;
+    if (changed && logged < 16) {
+        logged++;
+        fprintf(stderr, "[desktop-fit] ml2000 hwnd=0x%llx client-px={%.0f,%.0f %.0fx%.0f} desk=%dx%d -> view=(%.1f,%.1f %.1fx%.1f)\n",
+                key.unsignedLongLongValue, c.origin.x, c.origin.y, c.size.width, c.size.height, desk_w, desk_h,
+                view.origin.x, view.origin.y, view.size.width, view.size.height);
+    }
+    return YES;
+}
+/* ml2000: desktop px -> compositor-view points through the fitted window, if any. */
+static BOOL winios_desktop_fit_map(CGFloat x, CGFloat y, CGPoint *pt, CGFloat *scale) {
+    if (!g_fit_key || g_fit_client_px.size.width <= 0 || !CGRectContainsPoint(g_fit_client_px, CGPointMake(x, y)))
+        return NO;
+    CGFloat k = g_fit_view_pt.size.width / g_fit_client_px.size.width;
+    if (pt) *pt = CGPointMake(g_fit_view_pt.origin.x + (x - g_fit_client_px.origin.x) * k,
+                              g_fit_view_pt.origin.y + (y - g_fit_client_px.origin.y) * k);
+    if (scale) *scale = k;
+    return YES;
+}
+
 static void winios_place_metal_layer(NSNumber *key) {
     CAMetalLayer *ml = g_metal_layers[key];
     if (!ml) return;
@@ -1320,6 +1697,20 @@ static void winios_place_metal_layer(NSNumber *key) {
     ml.frame = CGRectMake((c.origin.x - org.x) * s,
                           (c.origin.y - org.y) * s,
                           c.size.width * s, c.size.height * s);
+    winios_desktop_fit(key, ml, c);   /* ml2000 */
+    {   /* ml1730: where the swapchain layer went, and where its window layer is. */
+        static unsigned logged;
+        if (logged < 60) {
+            logged++;
+            CALayer *parent = ml.superlayer;
+            fprintf(stderr, "[metal-place] ml1730 hwnd=0x%llx win-px={%.0f,%.0f %.0fx%.0f} client-px={%.0f,%.0f %.0fx%.0f} "
+                            "metal=(%.1f,%.1f %.1fx%.1f) in window-layer=(%.1f,%.1f %.1fx%.1f)\n",
+                    key.unsignedLongLongValue, w.origin.x, w.origin.y, w.size.width, w.size.height,
+                    c.origin.x, c.origin.y, c.size.width, c.size.height,
+                    ml.frame.origin.x, ml.frame.origin.y, ml.frame.size.width, ml.frame.size.height,
+                    parent.frame.origin.x, parent.frame.origin.y, parent.frame.size.width, parent.frame.size.height);
+        }
+    }
 }
 
 /* Called by IOSDisplayShim on a wine thread when DXMT creates a swapchain
@@ -1327,11 +1718,13 @@ static void winios_place_metal_layer(NSNumber *key) {
  * the shim CFRetains it for DXMT's lifetime handling. */
 CAMetalLayer *winios_metal_layer_for_hwnd(void *hwnd) {
     __block CAMetalLayer *result = nil;
+    uintptr_t owner = winios_caller_owner();   /* ml2000 */
     void (^make)(void) = ^{
         winios_ensure_compositor();
         if (!g_compositor_view) return;
         if (!g_metal_layers) g_metal_layers = [NSMutableDictionary new];
         NSNumber *key = @((uintptr_t)hwnd);
+        winios_note_owner(key, owner);
         CAMetalLayer *ml = g_metal_layers[key];
         if (!ml) {
             CALayer *win = winios_layer_for(hwnd, true);
@@ -1349,6 +1742,7 @@ CAMetalLayer *winios_metal_layer_for_hwnd(void *hwnd) {
                     hwnd, ml.frame.origin.x, ml.frame.origin.y,
                     ml.frame.size.width, ml.frame.size.height);
             fflush(stderr);
+            winios_census_note_metal((HWND)hwnd);   /* ml1490 */
         }
         result = ml;
     };
@@ -1361,11 +1755,16 @@ CAMetalLayer *winios_metal_layer_for_hwnd(void *hwnd) {
  * x/y/w/h = visible rect, cx/cy/cw/ch = client rect, desktop pixels. */
 void winios_window_frame(HWND hwnd, int x, int y, int w, int h, int visible,
                          int cx, int cy, int cw, int ch) {
+    /* ml1490: here, not in the block below — the census asks win32u about the
+     * window, which needs this wine thread. No-op unless the app turned it on. */
+    winios_census_note_frame(hwnd, x, y, w, h, visible);
+    uintptr_t owner = winios_caller_owner();   /* ml2000 */
     dispatch_async(dispatch_get_main_queue(), ^{
         if (!winios_ensure_window_host()) return;
         CALayer *l = winios_layer_for(hwnd, true);
         if (!l) return;
         NSNumber *key = @((uintptr_t)hwnd);
+        winios_note_owner(key, owner);
         g_px_rects[key] = [NSValue valueWithCGRect:CGRectMake(x, y, w, h)];
         if (!g_client_rects) g_client_rects = [NSMutableDictionary new];
         g_client_rects[key] = [NSValue valueWithCGRect:CGRectMake(cx, cy, cw, ch)];
@@ -1514,10 +1913,40 @@ void winios_dump_srcbits(const void *bits, int w, int h, int stride) {
 }
 
 /* Called from winios_surface_flush (wine thread) with the surface's
- * whole DIB. Copy immediately — `bits` is only valid for this call. */
-void winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
-                            int sw, int sh, int stride, const void *bits) {
-    if (sw <= 0 || sh <= 0 || !bits) return;
+ * whole DIB. Copy immediately — `bits` is only valid for this call.
+ *
+ * ml1028: returns 0 if the snapshot could not be allocated, 1 otherwise.
+ *
+ * This used to be void and took its copy with [NSData dataWithBytes:], whose
+ * allocator is NSAllocateMemoryPages -- which THROWS on failure and cannot
+ * return nil. rdr95 and rdr98 both died here, identically:
+ *
+ *   [surf-flush] #48 hwnd=0x80054 rect={0,0,1024,640} dirty={0,0,968,572}
+ *   *** Terminating app due to uncaught exception 'NSInvalidArgumentException',
+ *       reason: '*** NSAllocateMemoryPages(2621440) failed'
+ *
+ * 1024 * 640 * 4 = 2,621,440 exactly. The uncaught ObjC exception killed the
+ * pseudo-process, whose teardown took down the PROCESS-WIDE remote-Metal
+ * socket, after which the render thread spun in _MTLCommandBuffer_commit
+ * forever -- a 2.5MB copy failing turned into a whole-app hang.
+ *
+ * Note what it is NOT: the census at that moment reports free=609 MB with a
+ * 366 MB largest hole, so this is not an exhausted map. (The "NO GAP FITS"
+ * verdict elsewhere in the log belongs to a different, 8960 MB request.) It is
+ * a 2.5MB allocation failing through one specific allocator.
+ *
+ * So: allocate the snapshot with a CHECKED allocator, hand ownership to NSData
+ * with freeWhenDone (CGDataProviderCreateWithCFData retains the CFData, so the
+ * bytes outlive this call for as long as any consumer holds the image), and on
+ * failure report it. Wine's dce.c only calls reset_bounds() when flush returns
+ * TRUE, so returning 0 PRESERVES the dirty region and the frame is repainted
+ * later -- no lost damage, and nothing dies.
+ *
+ * WARNING: the snapshot must OWN its bytes. Wrapping `bits` with no-copy would
+ * be cheaper and wrong: it is only valid for the duration of this call. */
+int winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
+                           int sw, int sh, int stride, const void *bits) {
+    if (sw <= 0 || sh <= 0 || !bits) return 1;   /* nothing to paint */
     /* ml — before the copy, not after: a direct launch's D3D device window
      * flushes a full-size black client area and forwarding it would both
      * cover the game image and pay a whole-surface memcpy per flush for a
@@ -1525,8 +1954,26 @@ void winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
      * (winios_overlay_skip_hwnd) and normally never calls us at all for such
      * a window; this is the backstop for a flush already in flight when the
      * swapchain registered. Desktop mode never skips — see that function. */
-    if (winios_overlay_skip_hwnd(hwnd)) return;
-    NSData *data = [NSData dataWithBytes:bits length:(size_t)stride * sh];
+    if (winios_overlay_skip_hwnd(hwnd)) return 1;
+    winios_census_note_present(hwnd);   /* ml1490: no-op unless the census is on */
+    size_t snap_len = (size_t)stride * (size_t)sh;
+    void *snap = malloc(snap_len);
+    if (!snap) {
+        static unsigned nfail;
+        unsigned n = ++nfail;
+        if (n <= 16 || (n % 256) == 0)
+            dprintf(STDERR_FILENO,
+                    "[surf-snap] ml1028 #%u ALLOC FAILED %zu bytes (%dx%d stride=%d "
+                    "hwnd=%p) -- returning failure so Wine KEEPS the dirty bounds and "
+                    "repaints; this used to throw and kill the pseudo-process\n",
+                    n, snap_len, sw, sh, stride, hwnd);
+        return 0;
+    }
+    memcpy(snap, bits, snap_len);
+    /* freeWhenDone:YES => NSData calls free() on `snap`, which is what malloc
+     * wants. Ownership now belongs to `data` and, through it, to every CGImage
+     * CoreGraphics builds from it. */
+    NSData *data = [NSData dataWithBytesNoCopy:snap length:snap_len freeWhenDone:YES];
     static int dumpSurf = -1;
     if (dumpSurf < 0) dumpSurf = getenv("MADEIRA_DUMP_SURFACES") != NULL;
     /* ml537: complete an armed src/surface pair with the FIRST present after the
@@ -1754,6 +2201,7 @@ void winios_surface_present(HWND hwnd, int dx, int dy, int dw, int dh,
         CGDataProviderRelease(dp);
         CGColorSpaceRelease(cs);
     });
+    return 1;
 }
 
 /* ============================================================ *
@@ -1973,6 +2421,25 @@ void winios_cursor_reveal(void) {
     static unsigned notes;
     static CFAbsoluteTime last_note;
     if (!winios_cursor_reveal_enabled() || winios_cursor_desktop_mode()) return;
+    /* ml1980: a program that has never supplied a cursor image draws its own pointer
+     * (device log: no cursor ever set, fullscreen D3D window, input through raw input).
+     * Revealing the fallback arrow then shows a second pointer the program ignores, and
+     * the user aims with it. MADEIRA_CURSOR_REVEAL_UNSET=1 reveals it anyway. */
+    if (g_cur_w == 0) {
+        static int reveal_unset = -1;
+        static int logged;
+        if (reveal_unset < 0) {
+            const char *value = getenv("MADEIRA_CURSOR_REVEAL_UNSET");
+            reveal_unset = value && !strcmp(value, "1");
+        }
+        if (!reveal_unset) {
+            if (!logged) {
+                logged = 1;
+                fprintf(stderr, "[cursor-reveal] ml1980 program never set a cursor; no drawn arrow (it draws its own)\n");
+            }
+            return;
+        }
+    }
     CFAbsoluteTime now = CFAbsoluteTimeGetCurrent();
     int pending = now < g_cursor_reveal_until;
     g_cursor_reveal_until = now + WINIOS_CURSOR_REVEAL_SECONDS;
@@ -2038,6 +2505,16 @@ static void winios_cursor_place(void) {
     if (!g_cursor_layer) return;
     if (winios_cursor_desktop_mode()) {
         CGFloat x = g_cursor_pos_px.x, y = g_cursor_pos_px.y;
+        CGPoint fitted; CGFloat k = 0;
+        if (winios_desktop_fit_map(x, y, &fitted, &k)) {   /* ml2000 */
+            if (g_cur_w > 0) {
+                g_cursor_layer.bounds = CGRectMake(0, 0, g_cur_w * k, g_cur_h * k);
+                g_cursor_layer.position = CGPointMake(fitted.x - g_cur_hx * k, fitted.y - g_cur_hy * k);
+            } else {
+                g_cursor_layer.position = fitted;
+            }
+            return;
+        }
         if (g_cur_w > 0) {
             g_cursor_layer.bounds = CGRectMake(0, 0, g_cur_w * g_px_to_pt, g_cur_h * g_px_to_pt);
             g_cursor_layer.position = CGPointMake(g_desk_origin.x + (x - g_cur_hx) * g_px_to_pt,
@@ -2077,6 +2554,20 @@ static void winios_cursor_place(void) {
         CGFloat oldScale = MAX(1.0, MIN(s.width, s.height));
         g_cursor_layer.bounds = CGRectMake(0, 0, g_cur_w * (exact ? s.width : oldScale),
                                                 g_cur_h * (exact ? s.height : oldScale));
+    } else {
+        /* ml1980: the builtin fallback arrow was a fixed 14x21 POINTS, about twice a
+         * Windows arrow at the game's resolution (device log: 0.56 pt per guest px).
+         * Size it as guest pixels like a real cursor, with a small floor.
+         * MADEIRA_CURSOR_FALLBACK_SCALE=0 keeps the fixed size. */
+        static int scaled = -1;
+        if (scaled < 0) {
+            const char *value = getenv("MADEIRA_CURSOR_FALLBACK_SCALE");
+            scaled = !value || strcmp(value, "0");
+        }
+        if (scaled) {
+            CGSize img = winios_cursor_image().size;
+            g_cursor_layer.bounds = CGRectMake(0, 0, MAX(7.0, img.width * s.width), MAX(10.5, img.height * s.height));
+        }
     }
     g_cursor_layer.position = pos;
 }
@@ -2092,6 +2583,13 @@ int winios_desktop_point_from_window(double wx, double wy, int *px, int *py) {
     /* g_desk_origin is relative to the compositor view, whose frame is in
      * window coordinates (see winios_layout_compositor). */
     CGRect f = g_compositor_view.frame;
+    /* ml2000: a tap on a fitted window lands in that window's own client pixels. */
+    if (g_fit_key && CGRectContainsPoint(g_fit_view_pt, CGPointMake(wx - f.origin.x, wy - f.origin.y))) {
+        CGFloat k = g_fit_client_px.size.width / g_fit_view_pt.size.width;
+        if (px) *px = (int)(g_fit_client_px.origin.x + (wx - f.origin.x - g_fit_view_pt.origin.x) * k);
+        if (py) *py = (int)(g_fit_client_px.origin.y + (wy - f.origin.y - g_fit_view_pt.origin.y) * k);
+        return 1;
+    }
     double x = (wx - f.origin.x - g_desk_origin.x) / g_px_to_pt;
     double y = (wy - f.origin.y - g_desk_origin.y) / g_px_to_pt;
     if (x < 0) x = 0;

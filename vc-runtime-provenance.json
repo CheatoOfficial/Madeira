@@ -1,0 +1,94 @@
+{
+  "payload_source": "Licensed local Visual Studio 2022 Community redistributable files",
+  "version": "14.44.35211.0",
+  "version_matches_official_downloaded_vc_redist": true,
+  "official_vc_redist_x64_exe_url": "https://aka.ms/vs/17/release/vc_redist.x64.exe",
+  "official_vc_redist_x64_exe_sha256": "CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B",
+  "official_exe_authenticode_status": "Valid",
+  "files": [
+    {
+      "file": "concrt140.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "2405355F0A58067B258F8DF33C327E3A3D716EAAC5A3A5AEBB757842D85BD376"
+    },
+    {
+      "file": "msvcp140_1.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "BFAD5AEF4C63A669E3C140655CDFDF395B6C979B400A447BD5DCB65ED8826C3D"
+    },
+    {
+      "file": "msvcp140_2.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "3EA06F0EE098B4823CB79599DF3780E7F23CCE52C19AAC31D2A0D47EFE33A5E9"
+    },
+    {
+      "file": "msvcp140_atomic_wait.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "640B2AEFCED484D0368EEA5BDD06ADDD0658A3A70A49256E560D6923B404A479"
+    },
+    {
+      "file": "msvcp140_codecvt_ids.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "F2069A52880EC885EE7F0511186100EB7FADA0411A2B4948FAFEA7735B878A18"
+    },
+    {
+      "file": "msvcp140.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "0F885B509A685D2BBFA652FED26B5FB31D88FBDAB0A978C641D1C7B8AA460AA9"
+    },
+    {
+      "file": "vcamp140.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "52AF68F35476BD03D7B97752B01BEF358FFDDA568D150057D6CE809F77C4F704"
+    },
+    {
+      "file": "vccorlib140.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "19839407C3FDBC824E5BCE189BF68DDF8097F12EC28B757797FFA0415C144DDD"
+    },
+    {
+      "file": "vcomp140.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "55ABA23CDCD6484FBB06F4155B8CA75ADFCE7A881F10AFD0C49457165E677164"
+    },
+    {
+      "file": "vcruntime140_1.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "1F2D41C4AA5DB0BC33EBF7B66D72943A817D7CE6CBE880502A9403823633093F"
+    },
+    {
+      "file": "vcruntime140_threads.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "219915CF20822F34D5E7C1FDD4E21AE7F3396881096C51036225FB8F84B47AFA"
+    },
+    {
+      "file": "vcruntime140.dll",
+      "file_version": "14.44.35211.0",
+      "authenticode_status": "Valid",
+      "signer": "CN=Microsoft Windows Software Compatibility Publisher, O=Microsoft Corporation, L=Redmond, S=Washington, C=US",
+      "sha256": "D5E4D9A3E835FA679450145D6A7D94E36573A509317111904D9B3712C30D9066"
+    }
+  ]
+}

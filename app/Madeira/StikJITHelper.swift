@@ -106,6 +106,67 @@ enum StikJITHelper {
 
     private static var earlyInFlight = false
 
+    // ml1880: an early Dock pool cannot grow after debugger detach. If the user
+    // chooses desktop Steam instead, reserve its normal capacity for the next
+    // app run and stop before Wine starts. Explicit pool overrides still win.
+    private static let desktopPoolKey = "madeiraDockDesktopPoolNextRun"
+    // ml2000: Wine writes Documents/madeira-pool-pressure.txt (the pool size in MB)
+    // when a session runs the early pool dry; the pool cannot grow in that app run.
+    // The next run takes one step more (512 -> 896 -> 1152) and keeps it as a floor.
+    // MADEIRA_POOL_FEEDBACK=0 ignores the record (Wine: MADEIRA_POOL_PRESSURE_MARK=0).
+    private static let pressurePoolKey = "madeiraPoolPressureMB"
+    static func consumePoolPressure() -> Int {
+        guard LibraryFlags.enabled("MADEIRA_POOL_FEEDBACK") else { return 0 }
+        var floor = UserDefaults.standard.integer(forKey: pressurePoolKey)
+        if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let url = docs.appendingPathComponent("madeira-pool-pressure.txt")
+            if let text = try? String(contentsOf: url, encoding: .utf8) {
+                try? FileManager.default.removeItem(at: url)
+                let used = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+                let next = DockPerformancePolicy.poolAfterPressure(usedMB: max(used, floor))
+                if next > floor { floor = next; UserDefaults.standard.set(floor, forKey: pressurePoolKey) }
+                LogStore.shared.log("[pool-pressure] ml2000 last session ran a \(used)MB pool dry; early pool floor now \(floor)MB")
+            }
+        }
+        return (512...1152).contains(floor) ? floor : 0
+    }
+    static var poolPressureFloorMB: Int {
+        guard LibraryFlags.enabled("MADEIRA_POOL_FEEDBACK") else { return 0 }
+        let floor = UserDefaults.standard.integer(forKey: pressurePoolKey)
+        return (512...1152).contains(floor) ? floor : 0
+    }
+    /// ml2000: did the running session run the pool dry (file present, not yet consumed)?
+    static var poolPressureRecorded: Bool {
+        guard LibraryFlags.enabled("MADEIRA_POOL_FEEDBACK"),
+              let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return false }
+        return FileManager.default.fileExists(atPath: docs.appendingPathComponent("madeira-pool-pressure.txt").path)
+    }
+    private static let poolPolicyLock = NSLock() // never held across debugger allocation
+    private static var compactPoolSizeMB = 0 // protected by poolPolicyLock
+    static var explicitPoolMB: Int? {
+        guard let text = MadeiraConfig.get("pool"),
+              let mb = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              (256...1152).contains(mb) else { return nil }
+        return mb
+    }
+    static func rememberCompactPool(sizeMB: Int, selected: Bool) {
+        poolPolicyLock.lock()
+        if selected && sizeMB < 896 { compactPoolSizeMB = sizeMB }
+        poolPolicyLock.unlock()
+        if sizeMB >= 896 { UserDefaults.standard.removeObject(forKey: desktopPoolKey) }
+    }
+    static func reserveDesktopPoolIfNeeded(desktop: Bool, dock: Bool) -> Bool {
+        guard poolReady else { return false }
+        poolPolicyLock.lock()
+        let compactMB = compactPoolSizeMB
+        poolPolicyLock.unlock()
+        guard DockPerformancePolicy.needsDesktopRestart(compactPoolMB: compactMB,
+                explicit: explicitPoolMB, desktop: desktop, dock: dock) else { return false }
+        UserDefaults.standard.set(true, forKey: desktopPoolKey)
+        LogStore.shared.log("[dock-pool] ml1880 desktop held: compact pool=\(compactMB)MB; next run reserves desktop capacity")
+        return true
+    }
+
     /// Install the SIGTRAP fallback (skip a stray BRK, x0 = 0) once no debugger
     /// is attached -- but only before any Wine session was set up, because
     /// Wine installs and owns its own SIGTRAP handler from then on. Retried
@@ -131,8 +192,8 @@ enum StikJITHelper {
         var sizeMB = UserDefaults.standard.integer(forKey: "madeiraLastPoolMB")
         if !(256...1152).contains(sizeMB) { sizeMB = 512 }
         var source = UserDefaults.standard.object(forKey: "madeiraLastPoolMB") == nil ? "default" : "last session"
-        if let d = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
-           let txt = try? String(contentsOf: d.appendingPathComponent("madeira-pool.txt"), encoding: .utf8),
+        // madeira.cfg `pool`, or madeira-pool.txt when there is no madeira.cfg.
+        if let txt = MadeiraConfig.get("pool"),
            let mb = Int(txt.trimmingCharacters(in: .whitespacesAndNewlines)), (256...1152).contains(mb) {
             sizeMB = mb; source = "madeira-pool.txt"
         }
@@ -143,10 +204,42 @@ enum StikJITHelper {
            LibraryModel.shared.entries.contains(where: { $0.usesSteam }) {
             sizeMB = 896; source = "library has Windows Steam client entries, ml1420"
         }
+        // ml1540: a new install goes straight into setup, whose first session installs and runs
+        // the Windows Steam client (and its self-update). Device log 202: that session got the
+        // 512 MB default, ran the pool dry ([jit-pool] EXHAUSTED) and the desktop froze. Same for
+        // a run where a client was chosen before. MADEIRA_POOL_SETUP_896=0 turns this off.
+        if source != "madeira-pool.txt", sizeMB < 896, LibraryFlags.enabled("MADEIRA_POOL_SETUP_896"),
+           !UserDefaults.standard.bool(forKey: OnboardingRules.doneKey)
+            || UserDefaults.standard.string(forKey: "madeiraSteamClient") != nil
+            || FileManager.default.fileExists(atPath: LibraryModel.drive.appendingPathComponent("Program Files (x86)/Steam/steam.exe").path) {
+            sizeMB = 896; source = "setup or a Steam client ahead, ml1540"
+        }
+        // ml1570: setup's one session runs the installer, the client's self-update AND the
+        // restarted client with its web helper; device log prev-21 ran 896 MB dry there
+        // ("EXEC ALLOC FAILED ... no free carve AND no budget", the client died at 0xdead).
+        // Until setup is done the early pool is the largest allowed size.
+        if source != "madeira-pool.txt", sizeMB < 1152, LibraryFlags.enabled("MADEIRA_POOL_SETUP_896"),
+           !UserDefaults.standard.bool(forKey: OnboardingRules.doneKey) {
+            sizeMB = 1152; source = "setup's Steam install and update, ml1570"
+        }
+        let compactSelected = MadeiraDock.enabled && LibraryFlags.enabled("MADEIRA_DOCK_COMPACT_POOL")
+            && UserDefaults.standard.bool(forKey: OnboardingRules.doneKey)
+            && explicitPoolMB == nil && !UserDefaults.standard.bool(forKey: desktopPoolKey)
+        let pressureMB = consumePoolPressure()
+        sizeMB = DockPerformancePolicy.earlyPoolMB(legacy: sizeMB, explicit: explicitPoolMB,
+            dock: MadeiraDock.enabled, compact: LibraryFlags.enabled("MADEIRA_DOCK_COMPACT_POOL"),
+            setupComplete: UserDefaults.standard.bool(forKey: OnboardingRules.doneKey),
+            desktopReserved: UserDefaults.standard.bool(forKey: desktopPoolKey), pressureMB: pressureMB)
+        if compactSelected { source = "Dock compact default, ml1880" }
+        if pressureMB > 0 && sizeMB == pressureMB && explicitPoolMB == nil {
+            source = "an earlier session ran the pool dry, ml2000"
+        }
+        LogStore.shared.log("[dock-pool] ml1880 early=\(sizeMB)MB compact=\(compactSelected ? 1 : 0); MADEIRA_DOCK_COMPACT_POOL=0 restores desktop sizing")
         LogStore.shared.log("[jit-early] ml1330 trigger=\(trigger) allocating \(sizeMB)MB (\(source)) while the debugger is attached")
         DispatchQueue.global(qos: .userInitiated).async {
             let t0 = CFAbsoluteTimeGetCurrent()
             let pool = allocatePool(poolSize: sizeMB * 1024 * 1024)
+            if let pool { rememberCompactPool(sizeMB: pool.size / 1024 / 1024, selected: compactSelected) }
             if pool != nil { detachDebugger() }
             let seconds = CFAbsoluteTimeGetCurrent() - t0
             LogStore.shared.log(String(format: "[jit-early] ml1330 trigger=%@ pool=%@ size=%dMB seconds=%.2f detached=%d",
@@ -220,6 +313,10 @@ enum StikJITHelper {
     /// the same hole on the next roll. Reserve-only (never written), so they
     /// cost VA and no footprint. Kept for the process lifetime on purpose.
     private static var blockedHoles: [(addr: vm_address_t, size: vm_size_t)] = []
+    /// ml1640: the executable window was given back so a pool could fit; later
+    /// attempts in this run must not re-reserve it or reject placements over it.
+    private static var exeWindowSurrendered = false
+    private static var earlyPlaceholderReleased = false
 
     /// Allocate a JIT memory pool via BRK #0xf00d WITHOUT detaching the debugger.
     /// The debugger stays attached so Wine can use BRK to prepare PE code pages.
@@ -249,7 +346,8 @@ enum StikJITHelper {
         return nil
     }
 
-    private static func allocatePoolSized(poolSize: Int) -> (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)? {
+    private static func allocatePoolSized(poolSize requestedPoolSize: Int) -> (rx: UnsafeMutableRawPointer, rw: UnsafeMutableRawPointer, size: Int)? {
+        var poolSize = requestedPoolSize      // ml1036: may shrink to fit, see the hole census below
         poolLock.lock()
         defer { poolLock.unlock() }
         poolSession += 1
@@ -335,6 +433,14 @@ enum StikJITHelper {
             var addr: vm_address_t = 0
             let kr = vm_allocate(mach_task_self_, &addr, vm_size_t(chunkSize), VM_FLAGS_ANYWHERE)
             if kr == KERN_SUCCESS {
+                // ml1036: if the frontier is ALREADY past the threshold this chunk
+                // pins nothing useful and costs 16MB of the scarcest VA we have
+                // (the low gap must hold the pool AND the 0x140000000 window).
+                if addr >= pinTarget {
+                    vm_deallocate(mach_task_self_, addr, vm_size_t(chunkSize))
+                    LogStore.shared.log(String(format: "JIT-pool frontier already at 0x%lx — no pin needed", Int(addr)))
+                    break
+                }
                 pinChunks.append(addr)
                 LogStore.shared.log(String(format: "JIT-pool pin chunk %d at 0x%lx (16MB)", i, Int(addr)))
                 if addr + vm_address_t(chunkSize) >= pinTarget { break }
@@ -371,12 +477,277 @@ enum StikJITHelper {
         // never touched, so — exactly like the pin chunks above — it costs address
         // space and no footprint; only the rejected 896MB of DIRTY debugger pages
         // would have cost jetsam budget, and those are handed back first.
+        // ml1034: HOLD THE EXECUTABLE WINDOW BEFORE ALLOCATING RX.
+        //
+        // ml977 reserved [0x140000000,0x150000000) only AFTER the RX pool was
+        // allocated, so on the iPhone 18 Pro the pool got there first and the
+        // reservation could only report the loss:
+        //
+        //   ml977: could NOT reserve the executable window (kr=3)
+        //   ml977: RX pool overlaps the executable window -- RX placement, not RW,
+        //          would need changing
+        //   ml977: RX=[0x122000000,0x142000000)          <- contains 0x140000000
+        //   ml985: preferred base 0x140000000+0x70000 REFUSED status=0xc0000018
+        //
+        // RDR2.exe has BASERELOC rva=0 size=0, so it CANNOT be relocated: moved
+        // to 0x146a90000, every absolute pointer in it stayed behind. Its TLS
+        // AddressOfCallBacks still read 0x1432ba978 (relocated it would be
+        // 0x14954a978), call_tls_callbacks walked that stale array and called
+        // garbage:
+        //
+        //   CompileBlock: REFUSING low/invalid RIP=0x170
+        //   [redeliv] 2000 identical redeliveries pc=0x0 -- unrecoverable host
+        //             fault misdelivered to guest -> terminating
+        //
+        // The diagnosis was already in our own log; only the ORDER was wrong. So
+        // reserve first: the debugger's allocator cannot hand back a range that
+        // is already mapped, which removes the collision without naming an RX
+        // address ourselves. Failure is still never fatal -- we log and continue
+        // exactly as before, and MADEIRA_NO_EXE_WINDOW=1 skips it.
+        let exeWinBase: vm_address_t = 0x140000000
+        // ml1037: 128MB, not 256MB. The census on the iPhone 18 Pro read
+        //   0x12067c000+505MB | [window 256MB] | 0x150000000+500MB | 0x16fa24000+261MB
+        // i.e. the window itself was what split the low gap into pieces too small
+        // for the pool, and the 496MB pool that did fit ran out mid-load
+        // ("EXEC ALLOC FAILED ... JIT pool exhausted", exit 0xc000012d: 406MB of
+        // image copies + 64MB of live code buffers). Halving the window gives the
+        // hole above it ~628MB contiguous. The largest fixed-base image we ship
+        // against ends at +117MB; ntdll hands the window to the first fixed map
+        // of >=64MB that fits, and reads the size from WINE_IOS_EXE_WINDOW.
+        let exeWinSize: vm_address_t = 0x8000000           // 128MB
+        var exeWindowActive = !exeWindowSurrendered   // ml1640: see the census below
+        func overlapsExeWindow(_ base: vm_address_t, _ len: vm_address_t) -> Bool {
+            return exeWindowActive && base < exeWinBase + exeWinSize && base + len > exeWinBase
+        }
+        let skipWindow = exeWindowSurrendered
+            || (ProcessInfo.processInfo.environment["MADEIRA_NO_EXE_WINDOW"].map { $0 != "0" } ?? false)
+        var windowHeld = false
+        if !skipWindow && madeira_early_window_base == UInt(exeWinBase) && madeira_early_window_size == UInt(exeWinSize) {
+            // ml1040: already held since image load (JITAllocator.c constructor).
+            windowHeld = true
+            setenv("WINE_IOS_EXE_WINDOW", String(format: "%lx:%lx", Int(exeWinBase), Int(exeWinSize)), 1)
+            LogStore.shared.log("ml1040: executable window [0x140000000,+128MB) held since image load", level: .success)
+        } else if !skipWindow {
+            var winAddr: vm_address_t = exeWinBase
+            let krWin = vm_allocate(mach_task_self_, &winAddr, vm_size_t(exeWinSize), 0 /* VM_FLAGS_FIXED */)
+            if krWin == KERN_SUCCESS && winAddr == exeWinBase {
+                windowHeld = true
+                setenv("WINE_IOS_EXE_WINDOW", String(format: "%lx:%lx", Int(exeWinBase), Int(exeWinSize)), 1)
+                LogStore.shared.log("ml1034: reserved executable window [0x140000000,0x150000000) BEFORE "
+                    + "RX allocation - a fixed-base main image can now load where it must; "
+                    + "ntdll releases it on demand", level: .success)
+            } else {
+                if krWin == KERN_SUCCESS { vm_deallocate(mach_task_self_, winAddr, vm_size_t(exeWinSize)) }
+                LogStore.shared.log("ml1034: could NOT reserve the executable window (kr=\(krWin)) BEFORE "
+                    + "RX - something else already holds 0x140000000; a non-relocatable image will be "
+                    + "displaced and its absolute pointers will be stale", level: .error)
+                // ml1097: NAME the occupant. The ml1095 build hit this on every launch
+                // (0x140000000+88MB taken before the image-load constructor ran)
+                // and nothing said what it was.
+                var pa = vm_address_t(exeWinBase)
+                var ps: vm_size_t = 0
+                var pinfo = vm_region_basic_info_data_64_t()
+                var pcnt = mach_msg_type_number_t(MemoryLayout<vm_region_basic_info_data_64_t>.size / MemoryLayout<Int32>.size)
+                var pobj: mach_port_t = 0
+                let pkr = withUnsafeMutablePointer(to: &pinfo) {
+                    $0.withMemoryRebound(to: Int32.self, capacity: Int(pcnt)) {
+                        vm_region_64(mach_task_self_, &pa, &ps, VM_REGION_BASIC_INFO_64, $0, &pcnt, &pobj)
+                    }
+                }
+                var depth: natural_t = 0
+                var sinfo = vm_region_submap_info_data_64_t()
+                var scnt = mach_msg_type_number_t(MemoryLayout<vm_region_submap_info_data_64_t>.size / MemoryLayout<Int32>.size)
+                var sa = vm_address_t(exeWinBase)
+                var ss: vm_size_t = 0
+                _ = withUnsafeMutablePointer(to: &sinfo) {
+                    $0.withMemoryRebound(to: Int32.self, capacity: Int(scnt)) {
+                        vm_region_recurse_64(mach_task_self_, &sa, &ss, &depth, $0, &scnt)
+                    }
+                }
+                var dl = Dl_info()
+                let named = dladdr(UnsafeRawPointer(bitPattern: UInt(exeWinBase)), &dl) != 0
+                let image = named && dl.dli_fname != nil ? String(cString: dl.dli_fname) : "(no dyld image)"
+                LogStore.shared.log(String(format: "ml1097: occupant of 0x140000000: region 0x%lx+%luMB prot=%d/%d (kr=%d) user_tag=%u share=%d resident=%u pages; %@",
+                                           Int(pa), Int(ps >> 20), pinfo.protection, pinfo.max_protection, pkr,
+                                           sinfo.user_tag, Int(sinfo.share_mode), sinfo.pages_resident, image), level: .error)
+            }
+        }
+
         let goodLow = 0x119000000
         let guestLo = 0x7000000000
         let guestHi = 0x8000000000
         func placementIsGood(_ a: Int) -> Bool {
             return a >= goodLow && !(a + poolSize > guestLo && a < guestHi)
+                && !overlapsExeWindow(vm_address_t(a), vm_address_t(poolSize))
         }
+
+        // ml1036: HOLE CENSUS, then size the pool to what can actually be placed.
+        //
+        // ml1034 held the window first, and the very next launch could not place
+        // the pool at all: three identical "BAD POOL placement 0x7000000000"
+        // and an abort. The debugger's allocator is first-fit with no address
+        // hint, and on this phone the usable low gap is small -- from the slide-
+        // dependent frontier (0x11ed.. to 0x1258.. observed) up to the window.
+        // With the frontier at 0x1223d0000 that is 460MB: a 512MB pool does not
+        // fit, so the kernel falls through to the guest window, which we refuse.
+        // Before ml1034 the same launch would have "worked" by swallowing
+        // 0x140000000 and then killing any fixed-base game -- so the choice is
+        // between a smaller pool and a run that cannot survive. Measure the
+        // holes, log them, and take the largest pool that fits.
+        // ml1040: the run directly above the window has been held since image load
+        // so that nothing of ours could land in it. Release it now -- the very
+        // next allocation of this size is the debugger's.
+        var plugs: [(vm_address_t, vm_size_t)] = []
+        let earlyPoolBase = vm_address_t(madeira_early_pool_base)
+        let earlyPoolSize = vm_address_t(madeira_early_pool_size)
+        if earlyPoolBase != 0 {
+            vm_deallocate(mach_task_self_, earlyPoolBase, vm_size_t(earlyPoolSize))
+            // Released once: a fallback-size retry must not unmap whatever the
+            // debugger has since placed in this range.
+            madeira_early_pool_base = 0
+            earlyPlaceholderReleased = true
+            madeira_early_pool_size = 0
+            LogStore.shared.log(String(format: "ml1040: released the early pool placeholder 0x%lx+%luMB for the debugger",
+                                       Int(earlyPoolBase), Int(earlyPoolSize >> 20)))
+        } else {
+            if earlyPlaceholderReleased {
+                LogStore.shared.log("ml1040: early pool placeholder already released by an earlier attempt")
+            } else {
+                LogStore.shared.log("ml1040: no early pool placeholder was obtained — placement is left to chance", level: .error)
+            }
+            // ml1135: what was already mapped above the window at image load (user_tag
+            // is the VM_MEMORY_* allocation tag; 0 = untagged anonymous memory).
+            if madeira_early_intruder_base != 0 {
+                LogStore.shared.log(String(format: "ml1135: the placeholder was blocked at image load by a mapping at 0x%lx+%luMB (VM tag %u, prot %u) -- this is what shrinks the JIT pool",
+                                           Int(madeira_early_intruder_base), Int(madeira_early_intruder_size >> 20),
+                                           madeira_early_intruder_tag, madeira_early_intruder_prot), level: .error)
+            }
+        }
+        do {
+            var holes: [(base: vm_address_t, size: vm_address_t)] = []
+            var addr = vm_address_t(goodLow)
+            var prevEnd = vm_address_t(goodLow)
+            while addr < vm_address_t(guestLo) {
+                var rsize: vm_size_t = 0
+                var info = vm_region_basic_info_data_64_t()
+                var cnt = mach_msg_type_number_t(MemoryLayout<vm_region_basic_info_data_64_t>.size / MemoryLayout<Int32>.size)
+                var obj: mach_port_t = 0
+                let kr = withUnsafeMutablePointer(to: &info) {
+                    $0.withMemoryRebound(to: Int32.self, capacity: Int(cnt)) {
+                        vm_region_64(mach_task_self_, &addr, &rsize, VM_REGION_BASIC_INFO_64, $0, &cnt, &obj)
+                    }
+                }
+                if kr != KERN_SUCCESS { break }
+                let start = min(addr, vm_address_t(guestLo))
+                if start > prevEnd && start - prevEnd >= 64 << 20 { holes.append((prevEnd, start - prevEnd)) }
+                prevEnd = max(prevEnd, addr + vm_address_t(rsize))
+                addr = prevEnd
+            }
+            // ml1690: the walk ends when vm_region finds nothing above prevEnd, so
+            // the free space after the LAST mapping was never counted. On a 512 GB
+            // map that is the hundreds of GB above ~0x189000000 where every pool up
+            // to ml1620 was placed; without it the census saw only the small low
+            // holes and shrank an 896 MB pool to 608 MB. Count it, bounded by the
+            // task's real ceiling (a 63 GB map ends far below 0x7000000000).
+            // MADEIRA_POOL_CENSUS_TAIL=0 restores the old census.
+            if LibraryFlags.enabled("MADEIRA_POOL_CENSUS_TAIL") {
+                var vmi = task_vm_info_data_t()
+                var vcnt = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+                let vkr = withUnsafeMutablePointer(to: &vmi) {
+                    $0.withMemoryRebound(to: integer_t.self, capacity: Int(vcnt)) {
+                        task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &vcnt)
+                    }
+                }
+                let ceiling = min(vm_address_t(guestLo), vkr == KERN_SUCCESS && vmi.max_address > 0 ? vm_address_t(vmi.max_address) : 0)
+                LogStore.shared.log(String(format: "[pool-census] ml1740 walk ended at 0x%lx; ceiling 0x%lx (task_info kr=%d max=0x%llx)",
+                                           Int(prevEnd), Int(ceiling), vkr, UInt64(vmi.max_address)))
+                if ceiling > prevEnd && ceiling - prevEnd >= 64 << 20 {
+                    holes.append((prevEnd, ceiling - prevEnd))
+                    LogStore.shared.log(String(format: "[pool-census] ml1690 tail hole 0x%lx+%luMB counted (ceiling 0x%lx)",
+                                               Int(prevEnd), Int((ceiling - prevEnd) >> 20), Int(ceiling)))
+                }
+            }
+            let desc = holes.map { String(format: "0x%lx+%luMB", Int($0.base), Int($0.size >> 20)) }.joined(separator: " ")
+            LogStore.shared.log("ml1036: free holes >=64MB in [0x119000000,0x7000000000) with the window held: "
+                + (desc.isEmpty ? "NONE" : desc))
+            let largest = holes.map { $0.size }.max() ?? 0
+            // ml1640: THE POOL OUTRANKS THE WINDOW. On devices whose only large low
+            // gap is the one the window sits in, holding it split that gap and the
+            // shrink below cut the Steam client's 1152MB setup pool to 608MB; the
+            // web helper then ran the pool dry (FEX EC_CODE tail refused) and the
+            // login window never drew. The window only serves an x64 main image
+            // with no relocations, which is rare; a pool too small for the session
+            // fails every launch. So when giving the window back makes the
+            // requested size fit, give it back instead of shrinking.
+            // MADEIRA_POOL_OVER_EXE_WINDOW=0 keeps the window and shrinks.
+            var windowSurrenderedNow = false
+            if largest < vm_address_t(poolSize) && windowHeld
+                && LibraryFlags.enabled("MADEIRA_POOL_OVER_EXE_WINDOW") {
+                let below = holes.first { $0.base + $0.size == exeWinBase }?.size ?? 0
+                let above = holes.first { $0.base == exeWinBase + exeWinSize }?.size ?? 0
+                let merged = below + exeWinSize + above
+                if merged >= vm_address_t(poolSize) {
+                    vm_deallocate(mach_task_self_, exeWinBase, vm_size_t(exeWinSize))
+                    madeira_early_window_base = 0
+                    madeira_early_window_size = 0
+                    unsetenv("WINE_IOS_EXE_WINDOW")
+                    windowHeld = false
+                    exeWindowActive = false
+                    exeWindowSurrendered = true
+                    windowSurrenderedNow = true
+                    LogStore.shared.log("[exe-window] ml1640 released [0x140000000,+128MB) so the \(poolSize >> 20)MB pool fits "
+                        + "(\(merged >> 20)MB contiguous with it, largest hole \(largest >> 20)MB without); "
+                        + "an x64 main image with no relocations will load elsewhere this run", level: .info)
+                }
+            }
+            // ml1740: NO SHRINK BY DEFAULT. This fork's placement (the kernel's pick, then
+            // explicit 1 GB-stepped candidates below the guest band) always found room for
+            // the full pool above the shared cache before the merge; shrinking here first
+            // turned an unlucky low layout into a 608 MB pool that stalled the Steam client
+            // (device logs ml1640 and ml1730). MADEIRA_POOL_SHRINK=1 restores upstream's shrink.
+            if largest < vm_address_t(poolSize) && !windowSurrenderedNow
+                && !LibraryFlags.enabled("MADEIRA_POOL_SHRINK", fallback: false) {
+                LogStore.shared.log("[pool-census] ml1740 no low hole fits \(poolSize >> 20)MB (largest \(largest >> 20)MB); "
+                    + "keeping the size, placement looks higher")
+            } else if largest < vm_address_t(poolSize) && !windowSurrenderedNow {
+                let fit = Int(largest) & ~((16 << 20) - 1)
+                if fit >= 256 << 20 {
+                    LogStore.shared.log("ml1036: no hole fits a \(poolSize >> 20)MB pool — SHRINKING to \(fit >> 20)MB "
+                        + "(the alternative is a pool in the guest window or on top of 0x140000000, "
+                        + "both of which are fatal)", level: .error)
+                    poolSize = fit
+                    // ml1135: ~400MB of the pool is PE image copies, so below ~500MB FEX's
+                    // code cache is starved and rolls over every few seconds in game
+                    // (ph-rdr90: 432MB pool, 52 rollovers, a ~1 s freeze each).
+                    if fit < 500 << 20 {
+                        LogStore.shared.log("⚠️ SMALL JIT POOL (\(fit >> 20)MB) on this launch: expect ~1 s freezes in heavy games. "
+                            + "Quit and relaunch the app for a smooth session.", level: .error)
+                    }
+                } else {
+                    LogStore.shared.log("ml1036: largest hole is only \(largest >> 20)MB — cannot place a usable pool",
+                                        level: .error)
+                }
+            }
+            // ml1040: the debugger allocates first-fit. If a LOWER hole also fits
+            // the final pool size it would win and strand the pool below the
+            // window again, so plug those for the duration of the request.
+            // ml1097: a hole that CONTAINS or ADJOINS the released placeholder is the
+            // pool's own landing site, never a "lower hole" -- when the window was not
+            // held, the placeholder's run merged with the free space below it and
+            // the old test plugged the only hole that fit (every launch of ml1095
+            // ended in the guest window). Plug only holes ending below the placeholder.
+            if earlyPoolBase != 0 && windowHeld {
+                for h in holes where h.base + h.size <= earlyPoolBase && h.size >= vm_address_t(poolSize) {
+                    var a = h.base
+                    if vm_allocate(mach_task_self_, &a, vm_size_t(h.size), 0 /* FIXED */) == KERN_SUCCESS && a == h.base {
+                        plugs.append((a, vm_size_t(h.size)))
+                        LogStore.shared.log(String(format: "ml1040: plugged lower hole 0x%lx+%luMB so first-fit lands above the window",
+                                                   Int(h.base), Int(h.size >> 20)))
+                    } else if a != h.base { vm_deallocate(mach_task_self_, a, vm_size_t(h.size)) }
+                }
+            }
+        }
+
         var rxPtrOpt: UnsafeMutableRawPointer? = nil
         var attempts = 0
         let fastPlacement = getenv("MADEIRA_JIT_FAST_PLACEMENT").map { String(cString: $0) != "0" } ?? true
@@ -394,7 +765,7 @@ enum StikJITHelper {
             let a = Int(bitPattern: p)
             if placementIsGood(a) { rxPtrOpt = p; break }
             LogStore.shared.log(String(format: "[jit-pool] rejected placement 0x%lx (%@) on attempt %d — blocking that hole and re-rolling",
-                                       a, a < goodLow ? "mode A low" : "guest 64G window",
+                                       a, a < goodLow ? "mode A low" : (overlapsExeWindow(vm_address_t(a), vm_address_t(poolSize)) ? "swallows the 0x140000000 executable window" : "guest 64G window"),
                                        attempts), level: .error)
             let dkr = vm_deallocate(mach_task_self_, vm_address_t(a), vm_size_t(poolSize))
             if dkr == KERN_SUCCESS {
@@ -414,6 +785,9 @@ enum StikJITHelper {
             // Try the existing verified fixed-address path after one rejection.
             if fastPlacement { break }
         }
+
+        // ml1040: the plugs existed only to steer first-fit; give the VA back.
+        for (a, sz) in plugs { vm_deallocate(mach_task_self_, a, sz) }
 
         // Phase 2 (ml962): EXPLICIT PLACEMENT. The debugger's allocator is
         // ANYWHERE-only — madeira-jit.js says so in as many words ("_M<size>,<perms>
@@ -562,8 +936,62 @@ enum StikJITHelper {
         // PartitionAlloc gets only two of the three 16GB-aligned pools it needs
         // (see the ml96 [jumbo#N] census). Freeing that slot is worth doing —
         // but by moving WINE's furniture out of 496G, not by moving this.
-        rwAddr = 0
-        let kr1 = vm_remap(
+        // ml977: RESERVE the x64 executable window, then let the kernel place RW.
+        //
+        // Every x64 Windows executable defaults to ImageBase 0x140000000, and an
+        // image with no relocation directory MUST have it. RDR2.exe is exactly
+        // that (ImageBase 0x140000000, BASERELOC rva=0 size=0, DYNAMIC_BASE
+        // clear). In rdr40/rdr41 the kernel placed this RW alias adjacent to the
+        // RX pool -- RX=0x119eb0000, RW=RX+512MB -- so the alias covered
+        // 0x140000000, the loader's no-clobber fixed map failed, the exe was
+        // placed elsewhere WITHOUT relocations, and its TLS AddressOfCallBacks
+        // stayed 0x1432ba978: an address inside this alias. call_tls_callbacks
+        // then read its callback list out of pool backing memory.
+        //
+        // ml976 tried a list of FIXED candidates (0x150000000 upward) and every
+        // one returned KERN_NO_SPACE (=3): those ranges are occupied, so a
+        // non-overwriting remap correctly refused. ml976 then returned nil,
+        // which aborted pool allocation and stopped Wine from starting at all --
+        // "JIT pool allocation FAILED". A placement experiment must never brick
+        // the launch; that was the bug, not the refusal.
+        //
+        // So invert it: RESERVE [0x140000000, +256MB) up front, then ask for RW
+        // with VM_FLAGS_ANYWHERE exactly as before. The kernel cannot choose a
+        // range that overlaps a mapping we already hold, so adjacency is ruled
+        // out without naming any address ourselves, and the reservation also
+        // stops unrelated allocations and earlier relocatable images from taking
+        // the window first. rwAddr is seeded with 0x150000000 as a floor hint so
+        // the search starts just above the window rather than jumping far away
+        // (a large alias offset is legal -- FEX derives DualMap::WriteOffset from
+        // the real RW-RX distance -- but a near placement stays closest to the
+        // measured-good configuration).
+        //
+        // Failure is never fatal here: if the window cannot be reserved we log it
+        // and continue with the kernel's choice, which is the pre-ml976 behaviour.
+        // MADEIRA_NO_EXE_WINDOW=1 skips the reservation entirely.
+        // ml1034: the reservation and the RX overlap rejection both happen before
+        // the pool is allocated now (see above). This is a post-hoc assertion: if
+        // it fires, the debugger handed back a range covering a window we held,
+        // which should be impossible.
+        let rxAddrV = vm_address_t(bitPattern: rxPtr)
+        if overlapsExeWindow(rxAddrV, vm_address_t(poolSize)) {
+            LogStore.shared.log("ml1034: RX pool STILL overlaps the executable window despite reserving "
+                + "it first (windowHeld=\(windowHeld)) — a non-relocatable main image will be displaced",
+                level: .error)
+        }
+
+        // ml1037: the hint used to be 0x150000000 ("just above the window"), and
+        // the alias duly took the 500MB hole there -- the very hole the RX pool
+        // now needs. The alias has no placement requirement of its own (FEX
+        // derives WriteOffset from the real distance), so send it high, where it
+        // lived in every run before ml977, and keep the scarce low gap for RX.
+        // ml1640: on this fork's devices [0x7000000000, 0x8000000000) is the guest
+        // band (the x64 and 32-bit windows live at 0x71.. and up), so the alias
+        // does not go there by default: the kernel places it, as in every run up
+        // to ml1620. MADEIRA_RW_ALIAS_HIGH=1 restores the high hint.
+        let rwHigh = LibraryFlags.enabled("MADEIRA_RW_ALIAS_HIGH", fallback: false)
+        rwAddr = rwHigh ? 0x7000000000 : 0
+        var kr1 = vm_remap(
             mach_task_self_,
             &rwAddr,
             vm_size_t(poolSize),
@@ -577,10 +1005,35 @@ enum StikJITHelper {
             VM_INHERIT_NONE
         )
 
+        // ml1640: the 0x7000000000 hint is above the whole task map on a device
+        // whose map ends at 63 GB, and an ANYWHERE search that starts past the top
+        // never wraps: every alias failed with KERN_NO_SPACE and no pool was ever
+        // made. Let the kernel choose when the hint is out of reach.
+        // MADEIRA_RW_ALIAS_RETRY=0 restores fail-at-the-hint.
+        if kr1 == KERN_NO_SPACE && rwHigh && LibraryFlags.enabled("MADEIRA_RW_ALIAS_RETRY") {
+            rwAddr = 0
+            kr1 = vm_remap(mach_task_self_, &rwAddr, vm_size_t(poolSize), 0, VM_FLAGS_ANYWHERE,
+                           mach_task_self_, vm_address_t(bitPattern: rxPtr), 0,
+                           &curProt, &maxProt, VM_INHERIT_NONE)
+            LogStore.shared.log(String(format: "[rw-alias] ml1640 high hint out of reach; kernel placement kr=%d RW=0x%lx",
+                                       kr1, Int(rwAddr)), level: kr1 == KERN_SUCCESS ? .info : .error)
+        }
         guard kr1 == KERN_SUCCESS else {
             LogStore.shared.log("vm_remap failed: \(kr1)", level: .error)
+            // Give the debugger's RX pages back: a retry at a smaller size would
+            // otherwise keep every failed attempt's dirty pool alive.
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: rxPtr), vm_size_t(poolSize))
             return nil
         }
+
+        let rwOverlaps = overlapsExeWindow(rwAddr, vm_address_t(poolSize))
+        LogStore.shared.log("ml977: RX=[\(String(format:"%p",Int(rxAddrV))),"
+            + "\(String(format:"%p",Int(rxAddrV + vm_address_t(poolSize))))) "
+            + "RW=[\(String(format:"%p",Int(rwAddr))),"
+            + "\(String(format:"%p",Int(rwAddr + vm_address_t(poolSize))))) "
+            + "offset=0x\(String(Int(rwAddr) - Int(rxAddrV), radix: 16)) "
+            + "windowHeld=\(windowHeld) rwOverlap=\(rwOverlaps)",
+            level: rwOverlaps ? .error : .success)
 
         // Set RW protection
         let kr2 = vm_protect(mach_task_self_, rwAddr, vm_size_t(poolSize), 0, VM_PROT_READ | VM_PROT_WRITE)

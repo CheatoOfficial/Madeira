@@ -1,0 +1,337 @@
+name: iOS build (macOS)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/ios-build.yml'
+      - 'app/**'
+      - 'build/**'
+      - 'FEX'
+      - 'wine'
+      - 'research/dxmt'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Debug IPA build
+    runs-on: macos-15
+    timeout-minutes: 360
+    steps:
+      - name: Check out source and pinned submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Record macOS and Xcode environment
+        run: |
+          mkdir -p build-evidence
+          {
+            sw_vers
+            xcodebuild -version
+            xcrun --sdk iphoneos --show-sdk-version
+            xcrun --sdk iphoneos --show-sdk-path
+            git rev-parse HEAD
+            git submodule status --recursive
+          } 2>&1 | tee build-evidence/environment.log
+
+      - name: Restore native dependency build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            FEX/build-ios
+            FEX/build-arm64ec
+            wine/build-macos
+            wine/build-arm64ec
+            build/gnutls-ios/obj
+            build/freetype-ios/build
+            build/ffmpeg-ios/src
+            build/dxmt-ios/obj
+            research/freetype
+            toolchains/gnutls-ios
+            toolchains/ffmpeg-ios
+            toolchains/llvm-host-build
+            toolchains/llvm-ios-build
+          key: ios-native-deps-v3-macos15-xcode16.4-fex7b528d8-wine65fab176-dxmt550735c-llvmmingw20260922
+
+      - name: Build readiness audit
+        id: audit
+        shell: bash
+        run: |
+          set -u
+          report=build-evidence/readiness.txt
+          : > "$report"
+          missing=0
+          runtime_missing=false
+          for path in \
+            FEX/build-ios/FEXCore/Source/libFEXCore.a \
+            FEX/build-ios/FEXCore/Source/libFEXCore_Base.a \
+            FEX/build-ios/FEXCore/Source/libJemallocLibs.a \
+            FEX/build-ios/External/fmt/libfmt.a \
+            FEX/build-ios/External/cephes/libcephes_128bit.a \
+            FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a \
+            FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a \
+            app/Madeira/libntdll_unix.a app/Madeira/libwineserver.a \
+            app/Madeira/libwin32u_unix.a app/Madeira/libdxmt_combined.a \
+            app/Madeira/x86_64-vcruntime/concrt140.dll \
+            app/Madeira/x86_64-vcruntime/msvcp140.dll \
+            app/Madeira/x86_64-vcruntime/msvcp140_1.dll \
+            app/Madeira/x86_64-vcruntime/msvcp140_2.dll \
+            app/Madeira/x86_64-vcruntime/msvcp140_atomic_wait.dll \
+            app/Madeira/x86_64-vcruntime/msvcp140_codecvt_ids.dll \
+            app/Madeira/x86_64-vcruntime/vcamp140.dll \
+            app/Madeira/x86_64-vcruntime/vccorlib140.dll \
+            app/Madeira/x86_64-vcruntime/vcomp140.dll \
+            app/Madeira/x86_64-vcruntime/vcruntime140.dll \
+            app/Madeira/x86_64-vcruntime/vcruntime140_1.dll \
+            app/Madeira/x86_64-vcruntime/vcruntime140_threads.dll; do
+            if [[ ! -e "$path" ]]; then
+              printf 'MISSING %s\n' "$path" | tee -a "$report"
+              missing=$((missing + 1))
+              if [[ "$path" == app/Madeira/x86_64-vcruntime/* ]]; then
+                runtime_missing=true
+              fi
+            fi
+          done
+          printf 'missing_count=%s\n' "$missing" | tee -a "$report"
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+          echo "runtime_missing=$runtime_missing" >> "$GITHUB_OUTPUT"
+
+          for path in app/Madeira/nls app/Madeira/aarch64-windows \
+                      app/Madeira/legal app/Madeira/arm64ec-windows \
+                      app/Madeira/i386-windows app/Madeira/d3d12 \
+                      app/Madeira/licenses app/Madeira/prefix-template.tar.gz \
+                      app/Madeira/cacert.pem; do
+            if [[ ! -e "$path" ]]; then
+              printf 'MISSING RESOURCE %s\n' "$path" | tee -a "$report"
+              missing=$((missing + 1))
+            fi
+          done
+
+      - name: Stop if user-supplied Microsoft runtime files are absent
+        if: steps.audit.outputs.runtime_missing == 'true'
+        shell: bash
+        run: |
+          echo 'The Xcode Resources phase requires the twelve unmodified Microsoft DLLs listed in tools/fetch-vcruntime.md.'
+          echo 'Supply them locally for a non-public build. Project policy does not permit publishing them in this public IPA artifact.'
+          exit 1
+
+      - name: Install FEX build tools
+        run: |
+          brew install cmake ninja ccache llvm
+          xcodebuild -downloadComponent MetalToolchain 2>&1 | tee build-evidence/metal-toolchain.log
+
+      - name: Build redistributable helper libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew install pkg-config gettext
+          bash build/gnutls-ios/build.sh 2>&1 | tee build-evidence/gnutls-build.log
+          git clone --depth 1 --branch VER-2-13-3 https://github.com/freetype/freetype.git research/freetype
+          bash build/freetype-ios/build.sh 2>&1 | tee build-evidence/freetype-build.log
+          bash build/ffmpeg-ios/build.sh 2>&1 | tee build-evidence/ffmpeg-build.log
+
+      - name: Build FEX and Wine base libraries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p toolchains
+          curl -fL --retry 3 https://github.com/mstorsjo/llvm-mingw/releases/download/20260922/llvm-mingw-20260922-ucrt-macos-universal.tar.xz -o /tmp/llvm-mingw.tar.xz
+          echo '52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3  /tmp/llvm-mingw.tar.xz' | shasum -a 256 -c -
+          tar -xJf /tmp/llvm-mingw.tar.xz -C toolchains/
+          git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-ios-apple-host.patch"
+          git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-arm64ec-ios-link.patch"
+          bash build/fex-ios/build.sh 2>&1 | tee build-evidence/fex-build.log
+          bash build/fex-arm64ec/build.sh 2>&1 | tee build-evidence/fex-arm64ec-build.log
+          bash build/wine-pe/build-ntdll.sh 2>&1 | tee build-evidence/wine-pe-build.log
+
+      - name: Build Wine PE runtime modules
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd wine/build-arm64ec
+          for module in kernelbase kernel32 user32 gdi32 win32u advapi32 bcrypt crypt32 secur32 ws2_32 ole32 combase shell32 shlwapi ucrtbase vcruntime140 msvcp140 ucrtbase winmm dsound wineios; do
+            make -C "../../wine/build-arm64ec/dlls/$module" 2>&1 | tee "$GITHUB_WORKSPACE/build-evidence/wine-pe-$module.log"
+          done
+          cd "$GITHUB_WORKSPACE"
+          bash build/stage-licenses.sh 2>&1 | tee build-evidence/stage-licenses.log
+
+      - name: Prepare LLVM 15 iOS toolchain for DXMT
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p toolchains
+          git clone https://github.com/llvm/llvm-project.git toolchains/llvm-project
+          git -C toolchains/llvm-project checkout 8dfdcc7b7
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("toolchains/llvm-project/llvm/cmake/modules/AddLLVM.cmake")
+          s = p.read_text()
+          old = 'MATCHES "Darwin"'
+          if old not in s:
+              raise SystemExit("expected Darwin platform matcher not found in pinned LLVM source")
+          p.write_text(s.replace(old, 'MATCHES "Darwin|iOS"', 1))
+          PY
+          cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-host-build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD= -DLLVM_ENABLE_PROJECTS= -DLLVM_BUILD_TOOLS=ON -DLLVM_INCLUDE_TESTS=OFF -DLLVM_ENABLE_ZLIB=OFF
+          cmake --build toolchains/llvm-host-build --target llvm-tblgen --parallel 3 2>&1 | tee build-evidence/llvm-host-build.log
+          cmake -S toolchains/llvm-project/llvm -B toolchains/llvm-ios-build -G Ninja \
+            -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_ARCHITECTURES=arm64 \
+            -DCMAKE_OSX_SYSROOT="$(xcrun --sdk iphoneos --show-sdk-path)" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 -DCMAKE_BUILD_TYPE=Release \
+            -DLLVM_HOST_TRIPLE=arm64-apple-ios17.0 -DLLVM_DEFAULT_TARGET_TRIPLE=arm64-apple-ios17.0 \
+            -DLLVM_TARGET_ARCH=host -DLLVM_TARGETS_TO_BUILD= -DLLVM_ENABLE_PROJECTS= \
+            -DLLVM_BUILD_TOOLS=OFF -DLLVM_BUILD_UTILS=OFF -DLLVM_INCLUDE_TESTS=OFF \
+            -DLLVM_ENABLE_ZLIB=OFF -DLLVM_TABLEGEN="$GITHUB_WORKSPACE/toolchains/llvm-host-build/bin/llvm-tblgen" \
+            -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_LIBXML2=OFF -DLLVM_ENABLE_ASSERTIONS=OFF
+          cmake --build toolchains/llvm-ios-build --parallel 3 2>&1 | tee build-evidence/llvm-ios-build.log
+          mkdir -p toolchains/llvm-ios-build/lib
+          find toolchains/llvm-ios-build/lib -maxdepth 1 -name '*.a' -print
+
+      - name: Build DXMT iOS archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash build/dxmt-ios/build.sh 2>&1 | tee build-evidence/dxmt-build.log
+          xcrun -sdk iphoneos libtool -static -o build/dxmt-ios/libdxmt_combined.a build/dxmt-ios/obj/*.o toolchains/llvm-ios-build/lib/*.a
+          cp build/dxmt-ios/libdxmt_combined.a app/Madeira/libdxmt_combined.a
+
+      - name: Configure Wine iOS headers and tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd wine
+          mkdir -p build-macos
+          cd build-macos
+          ../configure --enable-archs=arm64 --without-x --disable-tests 2>&1 | tee ../../build-evidence/wine-configure.log
+
+      - name: Generate Wine crypto symbol tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash build/crypto-unix/gen_gnutls_symtab.sh 2>&1 | tee build-evidence/crypto-unix-generate.log
+
+      - name: Build Wine native iOS archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash build/ntdll-unix/build.sh 2>&1 | tee build-evidence/ntdll-unix-build.log
+          xcrun -sdk iphoneos libtool -static -o build/ntdll-unix/obj/libntdll_ffmpeg.a app/Madeira/libntdll_unix.a toolchains/ffmpeg-ios/lib/libavformat.a toolchains/ffmpeg-ios/lib/libavcodec.a toolchains/ffmpeg-ios/lib/libavutil.a toolchains/ffmpeg-ios/lib/libswresample.a
+          cp build/ntdll-unix/obj/libntdll_ffmpeg.a app/Madeira/libntdll_unix.a
+          bash build/wineserver/build.sh 2>&1 | tee build-evidence/wineserver-build.log
+          bash build/win32u-unix/build.sh 2>&1 | tee build-evidence/win32u-unix-build.log
+
+      - name: Attempt requested unsigned Debug build
+        id: xcodebuild
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project app/Madeira.xcodeproj \
+            -scheme Madeira \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$PWD/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            build 2>&1 | tee build-evidence/full-build.log
+
+      - name: Package and validate unsigned IPA
+        if: steps.xcodebuild.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$PWD/DerivedData/Build/Products/Debug-iphoneos/Madeira.app"
+          test -d "$APP"
+          mkdir -p package/Payload
+          cp -R "$APP" package/Payload/Madeira.app
+          (cd package && /usr/bin/zip -qry "$GITHUB_WORKSPACE/Madeira-ml2013-unsigned.ipa" Payload)
+          unzip -t Madeira-ml2013-unsigned.ipa 2>&1 | tee build-evidence/ipa-zip-check.txt
+          ditto -x -k Madeira-ml2013-unsigned.ipa ipa-check
+          BUNDLE=ipa-check/Payload/Madeira.app
+          test -f "$BUNDLE/Info.plist"
+          test -x "$BUNDLE/Madeira"
+          lipo -verify_arch arm64 "$BUNDLE/Madeira"
+          xcrun vtool -show-build "$BUNDLE/Madeira" | tee build-evidence/main-macho-platform.txt
+          grep -q 'platform IOS' build-evidence/main-macho-platform.txt
+          for path in nls aarch64-windows arm64ec-windows i386-windows d3d12 licenses; do
+            test -d "$BUNDLE/$path" || { echo "Missing bundled directory: $path"; exit 1; }
+          done
+          dlls=("$BUNDLE/x86_64-vcruntime"/*.dll)
+          test "${#dlls[@]}" -eq 12
+          for dll in "${dlls[@]}"; do test -f "$dll"; done
+          find "$BUNDLE" -type f \( -name '*.dylib' -o -name '*.framework' \) -print0 | while IFS= read -r -d '' file; do
+            file "$file"
+            if [[ "$file" == *.dylib ]]; then lipo -verify_arch arm64 "$file"; xcrun vtool -show-build "$file"; fi
+          done | tee build-evidence/bundled-dylib-audit.txt
+          if find "$BUNDLE" -type f \( -name '*.mobileprovision' -o -name '*.p12' -o -name '*.pfx' -o -name 'AuthKey_*.p8' -o -name 'id_rsa' -o -name 'id_ed25519' \) | grep -q .; then
+            echo 'Signing credential or provisioning material found in IPA'; exit 1
+          fi
+          if find "$BUNDLE" -name 'embedded.mobileprovision' | grep -q .; then echo 'Provisioning profile found in IPA'; exit 1; fi
+          IPA_SIZE=$(stat -f %z Madeira-ml2013-unsigned.ipa)
+          IPA_SHA=$(shasum -a 256 Madeira-ml2013-unsigned.ipa | awk '{print $1}')
+          printf '%s  %s\n' "$IPA_SHA" Madeira-ml2013-unsigned.ipa > SHA256SUMS.txt
+          python3 - "$IPA_SIZE" "$IPA_SHA" <<'PY'
+          import json, pathlib, subprocess, sys
+          size, digest = int(sys.argv[1]), sys.argv[2]
+          submodules = subprocess.check_output(["git", "submodule", "status", "--recursive"], text=True).splitlines()
+          def version(*args): return subprocess.check_output(args, text=True).strip()
+          manifest = {
+              "source_commit": version("git", "rev-parse", "HEAD"),
+              "submodule_commits": submodules,
+              "xcode_version": version("xcodebuild", "-version"),
+              "iphoneos_sdk_version": version("xcrun", "--sdk", "iphoneos", "--show-sdk-version"),
+              "file_count": sum(1 for p in pathlib.Path("ipa-check").rglob("*") if p.is_file()),
+              "ipa_size_bytes": size,
+              "ipa_sha256": digest,
+              "signing": "unsigned",
+              "device_runtime_verified": False,
+              "gta_v_note": "Not verified on a physical device; Rockstar Games Launcher/Social Club are not supported by current Madeira."
+          }
+          pathlib.Path("build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
+
+      - name: Upload IPA and build records
+        if: steps.xcodebuild.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Madeira-ml2013-unsigned-IPA
+          path: |
+            Madeira-ml2013-unsigned.ipa
+            SHA256SUMS.txt
+            build-manifest.json
+            build-evidence/
+            INSTALL-IPHONE.md
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record outcome
+        if: always()
+        shell: bash
+        env:
+          BUILD_OUTCOME: ${{ steps.xcodebuild.outcome }}
+        run: |
+          {
+            echo "source_commit=$(git rev-parse HEAD)"
+            echo "xcodebuild_outcome=$BUILD_OUTCOME"
+            echo "missing_inputs=${{ steps.audit.outputs.missing }}"
+          } | tee build-evidence/outcome.txt
+          if [[ "$BUILD_OUTCOME" != success ]]; then
+            echo 'The build did not succeed; no IPA was created.' | tee -a build-evidence/outcome.txt
+          fi
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: madeira-macos-build-evidence
+          path: build-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Fail if Xcode build failed
+        if: steps.xcodebuild.outcome != 'success'
+        run: exit 1
