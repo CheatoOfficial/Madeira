@@ -43,12 +43,16 @@ Authenticode signatures intact. Do not omit them from an IPA silently.
 
 ## macOS build status
 
-The Windows workspace has no Xcode, and no complete IPA exists. The public repo
-can be used to retry macOS CI, but its readiness audit intentionally fails
-until the twelve user-supplied DLLs are available to that build. The earlier
-private-repository runner failures were caused by GitHub billing; the user
-declined to increase spending. A public-repository run is still needed to
-confirm runner availability and the latest toolchain.
+The Windows workspace has no Xcode, and no complete IPA exists. Public macOS
+run [36436248487](https://github.com/CheatoOfficial/Madeira/actions/runs/36436248487)
+allocated a runner, checked out recursive submodules, and recorded macOS 15.7.9,
+Xcode 16.4 (16F6), and iPhoneOS SDK 18.5. Its readiness audit found 23 missing
+inputs: the eleven generated linker archives and the twelve user-supplied
+Microsoft DLLs listed above. It stopped before any native build, as intended.
+The current toolchain fix still needs a real link attempt after all required
+inputs are supplied. The user declined extra Actions spending; this public
+standard-runner job did start without the previous private-repository billing
+block.
 
 ## Previous private-repository runner failures
 

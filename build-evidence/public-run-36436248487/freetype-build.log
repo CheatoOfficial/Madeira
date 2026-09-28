@@ -1,0 +1,78 @@
+CMake Warning (deprecated) at CMakeLists.txt:113 (cmake_minimum_required):
+  Compatibility with CMake < 3.10 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value.  Or, use the <min>...<max> syntax
+  to tell CMake that the project requires at least <min> but has been updated
+  to work with policies introduced by <max> or earlier.
+This warning is for project developers.  Use -Wno-author or -Wno-deprecated
+to suppress it.
+
+-- The C compiler identification is AppleClang 17.0.0.17000013
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Found PkgConfig: /opt/homebrew/bin/pkg-config (found version "3.0.7")
+-- Looking for unistd.h
+-- Looking for unistd.h - found
+-- Looking for fcntl.h
+-- Looking for fcntl.h - found
+-- Configuring done (1.9s)
+-- Generating done (0.0s)
+-- Build files have been written to: /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/build/freetype-ios/build
+[  2%] Building C object CMakeFiles/freetype.dir/src/base/ftbase.c.o
+[  4%] Building C object CMakeFiles/freetype.dir/src/autofit/autofit.c.o
+[  6%] Building C object CMakeFiles/freetype.dir/src/base/ftbdf.c.o
+[  9%] Building C object CMakeFiles/freetype.dir/src/base/ftbbox.c.o
+[ 11%] Building C object CMakeFiles/freetype.dir/src/base/ftbitmap.c.o
+[ 13%] Building C object CMakeFiles/freetype.dir/src/base/ftcid.c.o
+[ 16%] Building C object CMakeFiles/freetype.dir/src/base/ftgasp.c.o
+[ 18%] Building C object CMakeFiles/freetype.dir/src/base/ftfstype.c.o
+[ 20%] Building C object CMakeFiles/freetype.dir/src/base/ftglyph.c.o
+[ 23%] Building C object CMakeFiles/freetype.dir/src/base/ftgxval.c.o
+[ 25%] Building C object CMakeFiles/freetype.dir/src/base/ftinit.c.o
+[ 27%] Building C object CMakeFiles/freetype.dir/src/base/ftmm.c.o
+[ 30%] Building C object CMakeFiles/freetype.dir/src/base/ftotval.c.o
+[ 32%] Building C object CMakeFiles/freetype.dir/src/base/ftpatent.c.o
+[ 34%] Building C object CMakeFiles/freetype.dir/src/base/ftpfr.c.o
+[ 37%] Building C object CMakeFiles/freetype.dir/src/base/ftstroke.c.o
+[ 39%] Building C object CMakeFiles/freetype.dir/src/base/ftsynth.c.o
+[ 41%] Building C object CMakeFiles/freetype.dir/src/base/fttype1.c.o
+[ 44%] Building C object CMakeFiles/freetype.dir/src/base/ftwinfnt.c.o
+[ 46%] Building C object CMakeFiles/freetype.dir/src/bdf/bdf.c.o
+[ 48%] Building C object CMakeFiles/freetype.dir/src/bzip2/ftbzip2.c.o
+[ 51%] Building C object CMakeFiles/freetype.dir/src/cff/cff.c.o
+[ 53%] Building C object CMakeFiles/freetype.dir/src/cache/ftcache.c.o
+[ 55%] Building C object CMakeFiles/freetype.dir/src/cid/type1cid.c.o
+[ 58%] Building C object CMakeFiles/freetype.dir/src/gzip/ftgzip.c.o
+In file included from /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/research/freetype/src/gzip/ftgzip.c:99:
+In file included from /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/research/freetype/src/gzip/zutil.c:8:
+/Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/research/freetype/src/gzip/zutil.h:172:11: warning: 'OS_CODE' macro redefined [-Wmacro-redefined]
+  172 | #  define OS_CODE 19
+      |           ^
+/Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/research/freetype/src/gzip/zutil.h:143:11: note: previous definition is here
+  143 | #  define OS_CODE  7
+      |           ^
+[ 60%] Building C object CMakeFiles/freetype.dir/src/lzw/ftlzw.c.o
+[ 62%] Building C object CMakeFiles/freetype.dir/src/pcf/pcf.c.o
+[ 65%] Building C object CMakeFiles/freetype.dir/src/pfr/pfr.c.o
+[ 67%] Building C object CMakeFiles/freetype.dir/src/psaux/psaux.c.o
+[ 69%] Building C object CMakeFiles/freetype.dir/src/pshinter/pshinter.c.o
+[ 72%] Building C object CMakeFiles/freetype.dir/src/psnames/psnames.c.o
+[ 74%] Building C object CMakeFiles/freetype.dir/src/raster/raster.c.o
+1 warning generated.
+[ 76%] Building C object CMakeFiles/freetype.dir/src/sdf/sdf.c.o
+[ 79%] Building C object CMakeFiles/freetype.dir/src/sfnt/sfnt.c.o
+[ 81%] Building C object CMakeFiles/freetype.dir/src/smooth/smooth.c.o
+[ 83%] Building C object CMakeFiles/freetype.dir/src/svg/svg.c.o
+[ 86%] Building C object CMakeFiles/freetype.dir/src/truetype/truetype.c.o
+[ 88%] Building C object CMakeFiles/freetype.dir/src/type1/type1.c.o
+[ 90%] Building C object CMakeFiles/freetype.dir/src/type42/type42.c.o
+[ 93%] Building C object CMakeFiles/freetype.dir/src/winfonts/winfnt.c.o
+[ 95%] Building C object CMakeFiles/freetype.dir/builds/unix/ftsystem.c.o
+[ 97%] Building C object CMakeFiles/freetype.dir/src/base/ftdebug.c.o
+[100%] Linking C static library libfreetype.a
+[100%] Built target freetype
+Done: /Users/runner/work/GTASanAndreas3DS/GTASanAndreas3DS/build/freetype-ios/build/libfreetype.a

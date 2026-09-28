@@ -1,0 +1,4 @@
+source_commit=645e1034bc82f15da204fc893db141bfa8709783
+xcodebuild_outcome=skipped
+missing_inputs=23
+The build did not succeed; no IPA was created.

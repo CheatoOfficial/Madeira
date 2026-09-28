@@ -1,0 +1,783 @@
+Debug IPA build	Set up job	﻿2026-09-28T14:28:38.8330750Z Current runner version: '2.337.0'
+Debug IPA build	Set up job	2026-09-28T14:28:38.8350740Z ##[group]Runner Image Provisioner
+Debug IPA build	Set up job	2026-09-28T14:28:38.8351350Z Hosted Compute Agent
+Debug IPA build	Set up job	2026-09-28T14:28:38.8352060Z Version: 20260828.587
+Debug IPA build	Set up job	2026-09-28T14:28:38.8352580Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+Debug IPA build	Set up job	2026-09-28T14:28:38.8353250Z Build Date: 2026-08-28T16:44:25Z
+Debug IPA build	Set up job	2026-09-28T14:28:38.8353740Z Worker ID: {741771d8-98b7-4cfe-b214-f7943bcba58f}
+Debug IPA build	Set up job	2026-09-28T14:28:38.8354190Z Azure Region: westus
+Debug IPA build	Set up job	2026-09-28T14:28:38.8354580Z ##[endgroup]
+Debug IPA build	Set up job	2026-09-28T14:28:38.8355750Z ##[group]Operating System
+Debug IPA build	Set up job	2026-09-28T14:28:38.8356150Z macOS
+Debug IPA build	Set up job	2026-09-28T14:28:38.8356480Z 15.7.9
+Debug IPA build	Set up job	2026-09-28T14:28:38.8356830Z 24G830
+Debug IPA build	Set up job	2026-09-28T14:28:38.8357180Z ##[endgroup]
+Debug IPA build	Set up job	2026-09-28T14:28:38.8357600Z ##[group]Runner Image
+Debug IPA build	Set up job	2026-09-28T14:28:38.8358000Z Image: macos-15-arm64
+Debug IPA build	Set up job	2026-09-28T14:28:38.8358400Z Version: 20260907.0337.1
+Debug IPA build	Set up job	2026-09-28T14:28:38.8359180Z Included Software: https://github.com/actions/runner-images/blob/macos-15-arm64/20260907.0337/images/macos/macos-15-arm64-Readme.md
+Debug IPA build	Set up job	2026-09-28T14:28:38.8360330Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15-arm64%2F20260907.0337
+Debug IPA build	Set up job	2026-09-28T14:28:38.8361020Z ##[endgroup]
+Debug IPA build	Set up job	2026-09-28T14:28:38.8361760Z ##[group]GITHUB_TOKEN Permissions
+Debug IPA build	Set up job	2026-09-28T14:28:38.8363030Z Contents: read
+Debug IPA build	Set up job	2026-09-28T14:28:38.8363420Z Metadata: read
+Debug IPA build	Set up job	2026-09-28T14:28:38.8363790Z ##[endgroup]
+Debug IPA build	Set up job	2026-09-28T14:28:38.8365300Z Secret source: Actions
+Debug IPA build	Set up job	2026-09-28T14:28:38.8365940Z Cache mode: write
+Debug IPA build	Set up job	2026-09-28T14:28:38.8366410Z Prepare workflow directory
+Debug IPA build	Set up job	2026-09-28T14:28:38.8598940Z Prepare all required actions
+Debug IPA build	Set up job	2026-09-28T14:28:38.8636850Z Getting action download info
+Debug IPA build	Set up job	2026-09-28T14:28:39.0582190Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+Debug IPA build	Set up job	2026-09-28T14:28:39.3264770Z Download action repository 'actions/cache@v4' (SHA:0057852bfaa89a56745cba8c7296529d2fc39830)
+Debug IPA build	Set up job	2026-09-28T14:28:39.4084900Z Download action repository 'actions/upload-artifact@v4' (SHA:ea165f8d65b6e75b540449e92b4886f43607fa02)
+Debug IPA build	Set up job	2026-09-28T14:28:39.5909050Z Complete job name: Debug IPA build
+Debug IPA build	Check out source and pinned submodules	﻿2026-09-28T14:28:39.6432430Z ##[group]Run actions/checkout@v4
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6433310Z with:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6433630Z   submodules: recursive
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6434000Z   fetch-depth: 0
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6434410Z   repository: CheatoOfficial/Madeira
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6437460Z   token: ***
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6437760Z   ssh-strict: true
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6438070Z   ssh-user: git
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6438400Z   persist-credentials: true
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6438830Z   clean: true
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6439190Z   sparse-checkout-cone-mode: true
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6439630Z   fetch-tags: false
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6439950Z   show-progress: true
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6440270Z   lfs: false
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6440600Z   set-safe-directory: true
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6441030Z   allow-unsafe-pr-checkout: false
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.6441590Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.8535390Z Syncing repository: CheatoOfficial/Madeira
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.8537070Z ##[group]Getting Git version info
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.8537650Z Working directory is '/Users/runner/work/Madeira/Madeira'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.8538560Z [command]/opt/homebrew/bin/git version
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9049980Z git version 2.55.0
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9058540Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9067590Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/89fd8fe0-3d34-45d1-93b5-1fb4bfa8bde4/.gitconfig'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9074200Z Temporarily overriding HOME='/Users/runner/work/_temp/89fd8fe0-3d34-45d1-93b5-1fb4bfa8bde4' before making global git config changes
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9075480Z Adding repository directory to the temporary git global config as a safe directory
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9078800Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/Madeira/Madeira
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9203570Z Deleting the contents of '/Users/runner/work/Madeira/Madeira'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9208690Z ##[group]Initializing the repository
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9213450Z [command]/opt/homebrew/bin/git init /Users/runner/work/Madeira/Madeira
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9785280Z hint: Using 'master' as the name for the initial branch. This default branch name
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9786170Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9786880Z hint: to use in all of your new repositories, which will suppress this warning,
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9787500Z hint: call:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9787800Z hint:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9788180Z hint: 	git config --global init.defaultBranch <name>
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9788640Z hint:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9789110Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9789760Z hint: 'development'. The just-created branch can be renamed via this command:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9790740Z hint:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9791140Z hint: 	git branch -m <name>
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9791550Z hint:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9792110Z hint: Disable this message with "git config set advice.defaultBranchName false"
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9793060Z Initialized empty Git repository in /Users/runner/work/Madeira/Madeira/.git/
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9799340Z [command]/opt/homebrew/bin/git remote add origin https://github.com/CheatoOfficial/Madeira
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9878050Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9878690Z ##[group]Disabling automatic garbage collection
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:39.9880610Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.0019120Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.0019960Z ##[group]Setting up auth
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.0020630Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.0025400Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.0926660Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.0983980Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.1729820Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.1799970Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.2676840Z [command]/opt/homebrew/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.2736380Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.2741800Z ##[group]Fetching the repository
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:28:40.2742710Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --prune --no-recurse-submodules origin +refs/heads/*:refs/remotes/origin/* +refs/tags/*:refs/tags/*
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.6830130Z From https://github.com/CheatoOfficial/Madeira
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.6834850Z  * [new branch]      main       -> origin/main
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.6929820Z [command]/opt/homebrew/bin/git branch --list --remote origin/main
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7085920Z   origin/main
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7110540Z [command]/opt/homebrew/bin/git rev-parse refs/remotes/origin/main
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7207950Z 645e1034bc82f15da204fc893db141bfa8709783
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7222940Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7225700Z ##[group]Determining the checkout info
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7227280Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7235500Z [command]/opt/homebrew/bin/git sparse-checkout disable
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7422360Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7555110Z ##[group]Checking out the ref
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:00.7557650Z [command]/opt/homebrew/bin/git checkout --progress --force -B main refs/remotes/origin/main
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:01.8407780Z Updating files:  12% (253/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.0675310Z Updating files:  13% (254/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.2092570Z Updating files:  14% (274/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.2950950Z Updating files:  15% (293/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.3615290Z Updating files:  16% (313/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.4172180Z Updating files:  17% (332/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.5223870Z Updating files:  18% (352/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.6482230Z Updating files:  19% (371/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.7596110Z Updating files:  20% (391/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.7753280Z Updating files:  21% (410/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.8098650Z Updating files:  21% (417/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.9043820Z Updating files:  22% (430/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:02.9882350Z Updating files:  23% (449/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.1306630Z Updating files:  24% (469/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.2705790Z Updating files:  25% (488/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.4351340Z Updating files:  26% (508/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.6038520Z Updating files:  27% (528/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.7806240Z Updating files:  28% (547/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.7954570Z Updating files:  28% (564/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.8742570Z Updating files:  29% (567/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:03.9948540Z Updating files:  30% (586/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.0472820Z Updating files:  31% (606/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.1863070Z Updating files:  32% (625/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.2204170Z Updating files:  33% (645/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.2547500Z Updating files:  34% (664/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.2924390Z Updating files:  35% (684/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.3697990Z Updating files:  36% (703/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.4124150Z Updating files:  37% (723/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.4623800Z Updating files:  38% (742/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.4986510Z Updating files:  39% (762/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.5278260Z Updating files:  40% (781/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.5459810Z Updating files:  41% (801/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.5754010Z Updating files:  42% (820/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.5923990Z Updating files:  43% (840/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.6212600Z Updating files:  44% (859/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.6378250Z Updating files:  45% (879/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.6672260Z Updating files:  46% (898/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.6822400Z Updating files:  47% (918/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.7126850Z Updating files:  48% (937/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.7381950Z Updating files:  49% (957/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.7631820Z Updating files:  50% (976/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.7791490Z Updating files:  51% (996/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.8298310Z Updating files:  51% (1004/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.8844550Z Updating files:  52% (1016/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.9133250Z Updating files:  53% (1035/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.9427340Z Updating files:  54% (1055/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.9621490Z Updating files:  55% (1074/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:04.9866820Z Updating files:  56% (1094/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.0086790Z Updating files:  57% (1113/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.0210280Z Updating files:  58% (1133/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.0726560Z Updating files:  59% (1152/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.0838530Z Updating files:  60% (1172/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.1373590Z Updating files:  61% (1191/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.1489870Z Updating files:  62% (1211/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.1618960Z Updating files:  63% (1230/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.1734660Z Updating files:  64% (1250/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.2222910Z Updating files:  65% (1269/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.2436250Z Updating files:  66% (1289/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.2580790Z Updating files:  67% (1308/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.2849800Z Updating files:  68% (1328/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.3250590Z Updating files:  69% (1347/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.3356810Z Updating files:  70% (1367/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.3889940Z Updating files:  71% (1386/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.4079270Z Updating files:  72% (1406/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.4205270Z Updating files:  73% (1425/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.4246490Z Updating files:  74% (1445/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.4507660Z Updating files:  75% (1464/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.4749090Z Updating files:  76% (1484/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.4823100Z Updating files:  77% (1504/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5566940Z Updating files:  78% (1523/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5600520Z Updating files:  79% (1543/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5640810Z Updating files:  80% (1562/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5710440Z Updating files:  81% (1582/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5789170Z Updating files:  82% (1601/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5866040Z Updating files:  83% (1621/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.5982590Z Updating files:  84% (1640/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6062330Z Updating files:  85% (1660/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6133660Z Updating files:  86% (1679/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6254930Z Updating files:  87% (1699/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6493740Z Updating files:  88% (1718/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6523610Z Updating files:  89% (1738/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6634870Z Updating files:  90% (1757/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6736850Z Updating files:  91% (1777/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6783540Z Updating files:  92% (1796/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6828600Z Updating files:  93% (1816/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.6968940Z Updating files:  94% (1835/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.7689230Z Updating files:  95% (1855/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.7906360Z Updating files:  96% (1874/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.7920970Z Updating files:  97% (1894/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8038550Z Updating files:  98% (1913/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8045660Z Updating files:  99% (1933/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8048710Z Updating files: 100% (1952/1952)
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8053580Z Updating files: 100% (1952/1952), done.
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8159780Z Switched to a new branch 'main'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8179200Z branch 'main' set up to track 'origin/main'.
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8331590Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8332800Z ##[group]Setting up auth for fetching submodules
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8348450Z [command]/opt/homebrew/bin/git config --global http.https://github.com/.extraheader AUTHORIZATION: basic ***
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8519370Z [command]/opt/homebrew/bin/git config --global --unset-all url.https://github.com/.insteadOf
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8680050Z [command]/opt/homebrew/bin/git config --global --add url.https://github.com/.insteadOf git@github.com:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8815070Z [command]/opt/homebrew/bin/git config --global --add url.https://github.com/.insteadOf org-68412723@github.com:
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8927200Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8928290Z ##[group]Fetching submodules
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:05.8936320Z [command]/opt/homebrew/bin/git submodule sync --recursive
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:06.0540620Z [command]/opt/homebrew/bin/git -c protocol.version=2 submodule update --init --force --recursive
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:06.2012820Z Submodule 'FEX' (https://github.com/125hz/FEX.git) registered for path 'FEX'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:06.2021820Z Submodule 'research/dxmt' (https://github.com/125hz/dxmt.git) registered for path 'research/dxmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:06.2033510Z Submodule 'wine' (https://github.com/125hz/wine.git) registered for path 'wine'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:06.2257280Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:12.2415710Z Cloning into '/Users/runner/work/Madeira/Madeira/research/dxmt'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:29:14.2761930Z Cloning into '/Users/runner/work/Madeira/Madeira/wine'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6396550Z Submodule path 'FEX': checked out '7b528d8a57cb12b794c589dd7e42fff813fc9abd'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6527160Z Submodule 'External/Catch2' (https://github.com/catchorg/Catch2.git) registered for path 'FEX/External/Catch2'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6535460Z Submodule 'External/Vulkan-Headers' (https://github.com/KhronosGroup/Vulkan-Headers.git) registered for path 'FEX/External/Vulkan-Headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6542820Z Submodule 'External/drm-headers' (https://github.com/FEX-Emu/drm-headers.git) registered for path 'FEX/External/drm-headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6549250Z Submodule 'External/fex-gcc-target-tests-bins' (https://github.com/FEX-Emu/fex-gcc-target-tests-bins.git) registered for path 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6561260Z Submodule 'External/fex-gvisor-tests-bins' (https://github.com/FEX-Emu/fex-gvisor-tests-bins.git) registered for path 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6594660Z Submodule 'External/fex-posixtest-bins' (https://github.com/FEX-Emu/fex-posixtest-bins.git) registered for path 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6595670Z Submodule 'External/fmt' (https://github.com/fmtlib/fmt.git) registered for path 'FEX/External/fmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6597180Z Submodule 'External/jemalloc_glibc' (https://github.com/FEX-Emu/jemalloc.git) registered for path 'FEX/External/jemalloc_glibc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6608200Z Submodule 'External/range-v3' (https://github.com/ericniebler/range-v3.git) registered for path 'FEX/External/range-v3'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6615770Z Submodule 'External/rpmalloc' (https://github.com/125hz/rpmalloc.git) registered for path 'FEX/External/rpmalloc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6628770Z Submodule 'External/tracy' (https://github.com/wolfpld/tracy) registered for path 'FEX/External/tracy'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6647100Z Submodule 'External/unordered_dense' (https://github.com/martinus/unordered_dense.git) registered for path 'FEX/External/unordered_dense'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6661680Z Submodule 'External/vixl' (https://github.com/FEX-Emu/vixl.git) registered for path 'FEX/External/vixl'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6679210Z Submodule 'External/xxhash' (https://github.com/Cyan4973/xxHash.git) registered for path 'FEX/External/xxhash'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6692950Z Submodule 'External/zydis' (https://github.com/zyantific/zydis.git) registered for path 'FEX/External/zydis'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6696500Z Submodule 'External/cpp-optparse' (https://github.com/Sonicadvance1/cpp-optparse) registered for path 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:22.6876280Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/Catch2'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:26.3222800Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/Vulkan-Headers'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:27.3914890Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/drm-headers'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:28.3317080Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/fex-gcc-target-tests-bins'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:29.5063620Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/fex-gvisor-tests-bins'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:34.4869130Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/fex-posixtest-bins'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:35.7016950Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/fmt'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:37.9498030Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/jemalloc_glibc'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:39.6487350Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/range-v3'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:42.8875720Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/rpmalloc'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:44.1347410Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/tracy'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:48.8943620Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/unordered_dense'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:50.6883130Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/vixl'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:53.9769540Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/xxhash'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:55.9519200Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/zydis'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:57.5033130Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/Source/Common/cpp-optparse'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:31:58.8029470Z Submodule path 'FEX/External/Catch2': checked out 'b3fb4b9feafcd8d91c5cb510a4775143fdbef02f'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:19.6463280Z From https://github.com/KhronosGroup/Vulkan-Headers
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:19.6506610Z  * branch            450bd2232225d6c7728a4108055ac2e37cef6475 -> FETCH_HEAD
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:19.9070720Z Submodule path 'FEX/External/Vulkan-Headers': checked out '450bd2232225d6c7728a4108055ac2e37cef6475'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:20.1674790Z Submodule path 'FEX/External/drm-headers': checked out '3e49836995c1dcb3df709440ad2f270b569c6a5f'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:20.4385430Z Submodule path 'FEX/External/fex-gcc-target-tests-bins': checked out '442678a134e2d25e759c430cca32e06e9e142f1f'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:22.2127050Z Submodule path 'FEX/External/fex-gvisor-tests-bins': checked out '71349ae6d14ac2e3e792730e240aecd8076cee6c'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:22.6769260Z Submodule path 'FEX/External/fex-posixtest-bins': checked out '9ae29638f8000c1603f16385ed1cf6c4c23ee414'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:22.7558790Z Submodule path 'FEX/External/fmt': checked out '407c905e45ad75fc29bf0f9bb7c5c2fd3475976f'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:22.8604250Z Submodule path 'FEX/External/jemalloc_glibc': checked out '8436195ad5e1bc347d9b39743af3d29abee59f06'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:22.9872040Z Submodule path 'FEX/External/range-v3': checked out 'ca1388fb9da8e69314dda222dc7b139ca84e092f'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:22.9928630Z Submodule 'doc/gh-pages' (https://github.com/ericniebler/range-v3.git) registered for path 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:23.0042040Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/range-v3/doc/gh-pages'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:27.1867340Z Submodule path 'FEX/External/range-v3/doc/gh-pages': checked out '2dae74bb693e42d850fb0adcc9045c5b71fbdeae'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:27.2484200Z Submodule path 'FEX/External/rpmalloc': checked out '42fe7b54ac0c5c66a863207ea3331792c42d0218'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:27.5225300Z Submodule path 'FEX/External/tracy': checked out '650c98ece70da9e155e7ba1c2b3ee16004aae118'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:28.1627730Z Submodule path 'FEX/External/unordered_dense': checked out '3234af2c03549bc85656bfd3a86993bf1cd8aef1'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:37.9564370Z From https://github.com/FEX-Emu/vixl
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:37.9565680Z  * branch              5f418449c48f6ca3ad37c47ec632f17a561c0580 -> FETCH_HEAD
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:39.5917420Z Submodule path 'FEX/External/vixl': checked out '5f418449c48f6ca3ad37c47ec632f17a561c0580'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:39.6736720Z Submodule path 'FEX/External/xxhash': checked out 'e626a72bc2321cd320e953a0ccf1584cad60f363'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:47.9047260Z From https://github.com/zyantific/zydis
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:47.9048280Z  * branch            9bfadd6a55fc92dbd37fa3ba089bf8b36622df4f -> FETCH_HEAD
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:48.0366440Z Submodule path 'FEX/External/zydis': checked out '9bfadd6a55fc92dbd37fa3ba089bf8b36622df4f'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:48.0421110Z Submodule 'dependencies/zycore' (https://github.com/zyantific/zycore-c) registered for path 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:48.0514660Z Cloning into '/Users/runner/work/Madeira/Madeira/FEX/External/zydis/dependencies/zycore'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:49.1342480Z Submodule path 'FEX/External/zydis/dependencies/zycore': checked out '75a36c45ae1ad382b0f4e0ede0af84c11ee69928'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:49.1690030Z Submodule path 'FEX/Source/Common/cpp-optparse': checked out '9f94388a339fcbb0bc95c17768eb786c85988f6e'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:49.3022630Z Submodule path 'research/dxmt': checked out '550735c32c1a2faa68fa4fe504ac827e0f341831'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:49.3082000Z Submodule 'external/nvapi' (https://github.com/NVIDIA/nvapi.git) registered for path 'research/dxmt/external/nvapi'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:49.3092260Z Submodule 'include/native/directx' (https://github.com/misyltoad/mingw-directx-headers) registered for path 'research/dxmt/include/native/directx'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:49.3198860Z Cloning into '/Users/runner/work/Madeira/Madeira/research/dxmt/external/nvapi'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:53.3170910Z Cloning into '/Users/runner/work/Madeira/Madeira/research/dxmt/include/native/directx'...
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:54.2822720Z Submodule path 'research/dxmt/external/nvapi': checked out 'd08488fcc82eef313b0464db37d2955709691e94'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:54.3227630Z Submodule path 'research/dxmt/include/native/directx': checked out '9df86f2341616ef1888ae59919feaa6d4fad693d'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.2291050Z Submodule path 'wine': checked out '65fab17629dd768de44711082c7cfa5e199278b1'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.2446840Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local gc.auto 0
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.4399660Z Entering 'FEX'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.4681450Z Entering 'FEX/External/Catch2'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.5490890Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.5654760Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.5820900Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.5994050Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.6559520Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.6751980Z Entering 'FEX/External/fmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.6917900Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.7081940Z Entering 'FEX/External/range-v3'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.7249550Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.7420620Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.7584950Z Entering 'FEX/External/tracy'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.7751280Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.8164120Z Entering 'FEX/External/vixl'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.8306180Z Entering 'FEX/External/xxhash'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.8492650Z Entering 'FEX/External/zydis'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.8628740Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.8788630Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.8966610Z Entering 'research/dxmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.9132840Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.9279330Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.9424370Z Entering 'wine'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.9581900Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.9591450Z ##[group]Persisting credentials for submodules
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:57.9607440Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'url\.https\:\/\/github\.com\/\.insteadOf' && git config --local --unset-all 'url.https://github.com/.insteadOf' || :"
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.0547450Z Entering 'FEX'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.0839800Z Entering 'FEX/External/Catch2'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.1279180Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.1582430Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.1985120Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.2390000Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.2692600Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.3094710Z Entering 'FEX/External/fmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.3390180Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.3607550Z Entering 'FEX/External/range-v3'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.3800200Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.3984910Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.4159490Z Entering 'FEX/External/tracy'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.4357710Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.4759760Z Entering 'FEX/External/vixl'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.5161780Z Entering 'FEX/External/xxhash'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.5664370Z Entering 'FEX/External/zydis'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.5966590Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.6268510Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.6570680Z Entering 'research/dxmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.6871800Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.7199980Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.7684090Z Entering 'wine'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.8200170Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local 'http.https://github.com/.extraheader' 'AUTHORIZATION: basic ***' && git config --local --show-origin --name-only --get-regexp remote.origin.url"
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.9190420Z Entering 'FEX'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.9401040Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.9462840Z Entering 'FEX/External/Catch2'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.9656640Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/Catch2/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:58.9751950Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0027910Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/Vulkan-Headers/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0095230Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0330990Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/drm-headers/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0432950Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0651920Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-gcc-target-tests-bins/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0723800Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0900820Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-gvisor-tests-bins/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.0967550Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.1136750Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-posixtest-bins/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.1195770Z Entering 'FEX/External/fmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.1378560Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fmt/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.1432520Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.1643110Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/jemalloc_glibc/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.1711390Z Entering 'FEX/External/range-v3'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2002870Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/range-v3/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2068150Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2274180Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/range-v3/modules/doc/gh-pages/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2339250Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2549270Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/rpmalloc/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2609230Z Entering 'FEX/External/tracy'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2835670Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/tracy/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.2903180Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3122280Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/unordered_dense/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3210880Z Entering 'FEX/External/vixl'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3402280Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/vixl/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3472350Z Entering 'FEX/External/xxhash'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3681260Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/xxhash/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3743210Z Entering 'FEX/External/zydis'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3924960Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/zydis/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.3973100Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4135820Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/zydis/modules/dependencies/zycore/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4185340Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4348570Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/cpp-optparse/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4408540Z Entering 'research/dxmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4608870Z file:/Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4663050Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.4890220Z file:/Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/modules/external/nvapi/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.5013270Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.5259970Z file:/Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/modules/include/native/directx/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.5343550Z Entering 'wine'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.5538920Z file:/Users/runner/work/Madeira/Madeira/.git/modules/wine/config	remote.origin.url
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.5775980Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --add 'url.https://github.com/.insteadOf' 'git@github.com:'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.6635920Z Entering 'FEX'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.6772830Z Entering 'FEX/External/Catch2'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.6903860Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7040090Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7173290Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7303140Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7446390Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7610190Z Entering 'FEX/External/fmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7736920Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.7867360Z Entering 'FEX/External/range-v3'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8003300Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8166450Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8307380Z Entering 'FEX/External/tracy'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8455890Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8612870Z Entering 'FEX/External/vixl'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8776610Z Entering 'FEX/External/xxhash'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.8945840Z Entering 'FEX/External/zydis'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.9105500Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.9278170Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.9438790Z Entering 'research/dxmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.9636060Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.9805330Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:32:59.9973580Z Entering 'wine'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.0155350Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --add 'url.https://github.com/.insteadOf' 'org-68412723@github.com:'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.1500090Z Entering 'FEX'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.1790180Z Entering 'FEX/External/Catch2'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.1990070Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.2162670Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.2356630Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.2558770Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.2736030Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.2877190Z Entering 'FEX/External/fmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.3090500Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.3346210Z Entering 'FEX/External/range-v3'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.3499910Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.3664600Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.3933580Z Entering 'FEX/External/tracy'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.4153300Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.4315720Z Entering 'FEX/External/vixl'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.4479110Z Entering 'FEX/External/xxhash'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.4662890Z Entering 'FEX/External/zydis'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.4854790Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.5053900Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.5236080Z Entering 'research/dxmt'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.5431240Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.5591970Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.5754420Z Entering 'wine'
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.5938990Z ##[endgroup]
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.6079540Z [command]/opt/homebrew/bin/git log -1 --format=%H
+Debug IPA build	Check out source and pinned submodules	2026-09-28T14:33:00.6144890Z 645e1034bc82f15da204fc893db141bfa8709783
+Debug IPA build	Record macOS and Xcode environment	﻿2026-09-28T14:33:00.6603880Z ##[group]Run mkdir -p build-evidence
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6604280Z [36;1mmkdir -p build-evidence[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6604510Z [36;1m{[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6604710Z [36;1m  sw_vers[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6604940Z [36;1m  xcodebuild -version[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6605170Z [36;1m  xcrun --sdk iphoneos --show-sdk-version[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6605440Z [36;1m  xcrun --sdk iphoneos --show-sdk-path[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6605660Z [36;1m  git rev-parse HEAD[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6605860Z [36;1m  git submodule status --recursive[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6606110Z [36;1m} 2>&1 | tee build-evidence/environment.log[0m
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6892340Z shell: /bin/bash -e {0}
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.6892560Z ##[endgroup]
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.7633310Z ProductName:		macOS
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.7634680Z ProductVersion:		15.7.9
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:00.7635270Z BuildVersion:		24G830
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:01.0638030Z Xcode 16.4
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:01.0652930Z Build version 16F6
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.1133630Z 18.5
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.1234510Z /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.1335780Z 645e1034bc82f15da204fc893db141bfa8709783
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.3585470Z  7b528d8a57cb12b794c589dd7e42fff813fc9abd FEX (pre-upstream-merge-11-g7b528d8a5)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.3864100Z  b3fb4b9feafcd8d91c5cb510a4775143fdbef02f FEX/External/Catch2 (v3.11.0)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.4299600Z  450bd2232225d6c7728a4108055ac2e37cef6475 FEX/External/Vulkan-Headers (450bd22)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.4659970Z  3e49836995c1dcb3df709440ad2f270b569c6a5f FEX/External/drm-headers (remotes/origin/v6.17)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.5014770Z  442678a134e2d25e759c430cca32e06e9e142f1f FEX/External/fex-gcc-target-tests-bins (heads/main)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.5313890Z  71349ae6d14ac2e3e792730e240aecd8076cee6c FEX/External/fex-gvisor-tests-bins (heads/main)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.5614100Z  9ae29638f8000c1603f16385ed1cf6c4c23ee414 FEX/External/fex-posixtest-bins (heads/master)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.6263690Z  407c905e45ad75fc29bf0f9bb7c5c2fd3475976f FEX/External/fmt (12.1.0)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.6500970Z  8436195ad5e1bc347d9b39743af3d29abee59f06 FEX/External/jemalloc_glibc (5.2.1-902-g8436195a)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.6753190Z  ca1388fb9da8e69314dda222dc7b139ca84e092f FEX/External/range-v3 (0.12.0-47-gca1388fb9)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.7247360Z  2dae74bb693e42d850fb0adcc9045c5b71fbdeae FEX/External/range-v3/doc/gh-pages (remotes/origin/gh-pages)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.7535430Z  42fe7b54ac0c5c66a863207ea3331792c42d0218 FEX/External/rpmalloc (pre-upstream-merge-8-g42fe7b5)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.8316640Z  650c98ece70da9e155e7ba1c2b3ee16004aae118 FEX/External/tracy (v0.12.1)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.8554250Z  3234af2c03549bc85656bfd3a86993bf1cd8aef1 FEX/External/unordered_dense (v4.8.1)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.9005670Z  5f418449c48f6ca3ad37c47ec632f17a561c0580 FEX/External/vixl (5f418449)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.9346000Z  e626a72bc2321cd320e953a0ccf1584cad60f363 FEX/External/xxhash (v0.8.3)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.9715080Z  9bfadd6a55fc92dbd37fa3ba089bf8b36622df4f FEX/External/zydis (9bfadd6)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:03.9898620Z  75a36c45ae1ad382b0f4e0ede0af84c11ee69928 FEX/External/zydis/dependencies/zycore (v1.5.2-7-g75a36c4)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:04.0145760Z  9f94388a339fcbb0bc95c17768eb786c85988f6e FEX/Source/Common/cpp-optparse (heads/master)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:04.0268920Z  550735c32c1a2faa68fa4fe504ac827e0f341831 research/dxmt (v0.73-117-g550735c)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:04.0645440Z  d08488fcc82eef313b0464db37d2955709691e94 research/dxmt/external/nvapi (remotes/origin/530-13-gd08488f)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:04.1178950Z  9df86f2341616ef1888ae59919feaa6d4fad693d research/dxmt/include/native/directx (heads/main)
+Debug IPA build	Record macOS and Xcode environment	2026-09-28T14:33:06.5776720Z  65fab17629dd768de44711082c7cfa5e199278b1 wine (remotes/origin/integration/upstream-0926)
+Debug IPA build	Restore native dependency build cache	﻿2026-09-28T14:33:06.6142750Z ##[group]Run actions/cache@v4
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6142990Z with:
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6143800Z   path: FEX/build-ios
+Debug IPA build	Restore native dependency build cache	FEX/build-arm64ec
+Debug IPA build	Restore native dependency build cache	wine/build-macos
+Debug IPA build	Restore native dependency build cache	wine/build-arm64ec
+Debug IPA build	Restore native dependency build cache	build/gnutls-ios/obj
+Debug IPA build	Restore native dependency build cache	build/freetype-ios/build
+Debug IPA build	Restore native dependency build cache	build/ffmpeg-ios/src
+Debug IPA build	Restore native dependency build cache	build/dxmt-ios/obj
+Debug IPA build	Restore native dependency build cache	research/freetype
+Debug IPA build	Restore native dependency build cache	toolchains/gnutls-ios
+Debug IPA build	Restore native dependency build cache	toolchains/ffmpeg-ios
+Debug IPA build	Restore native dependency build cache	toolchains/llvm-host-build
+Debug IPA build	Restore native dependency build cache	toolchains/llvm-ios-build
+Debug IPA build	Restore native dependency build cache	
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6144890Z   key: ios-native-deps-v3-macos15-xcode16.4-fex7b528d8-wine65fab176-dxmt550735c-llvmmingw20260922
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6145290Z   enableCrossOsArchive: false
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6145500Z   fail-on-cache-miss: false
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6145700Z   lookup-only: false
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6145870Z   save-always: false
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.6146050Z ##[endgroup]
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.7706140Z (node:7763) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.7711260Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Debug IPA build	Restore native dependency build cache	2026-09-28T14:33:06.8909930Z Cache not found for input keys: ios-native-deps-v3-macos15-xcode16.4-fex7b528d8-wine65fab176-dxmt550735c-llvmmingw20260922
+Debug IPA build	Build readiness audit	﻿2026-09-28T14:33:06.8986030Z ##[group]Run set -u
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8986400Z [36;1mset -u[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8986690Z [36;1mreport=build-evidence/readiness.txt[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8986990Z [36;1m: > "$report"[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8987220Z [36;1mmissing=0[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8987390Z [36;1mruntime_missing=false[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8987590Z [36;1mfor path in \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8987850Z [36;1m  FEX/build-ios/FEXCore/Source/libFEXCore.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8988220Z [36;1m  FEX/build-ios/FEXCore/Source/libFEXCore_Base.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8988640Z [36;1m  FEX/build-ios/FEXCore/Source/libJemallocLibs.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8988990Z [36;1m  FEX/build-ios/External/fmt/libfmt.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8989390Z [36;1m  FEX/build-ios/External/cephes/libcephes_128bit.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8989790Z [36;1m  FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8990260Z [36;1m  FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8990760Z [36;1m  app/Madeira/libntdll_unix.a app/Madeira/libwineserver.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8991240Z [36;1m  app/Madeira/libwin32u_unix.a app/Madeira/libdxmt_combined.a \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8991630Z [36;1m  app/Madeira/x86_64-vcruntime/concrt140.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8992020Z [36;1m  app/Madeira/x86_64-vcruntime/msvcp140.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8992370Z [36;1m  app/Madeira/x86_64-vcruntime/msvcp140_1.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8992820Z [36;1m  app/Madeira/x86_64-vcruntime/msvcp140_2.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8993230Z [36;1m  app/Madeira/x86_64-vcruntime/msvcp140_atomic_wait.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8993620Z [36;1m  app/Madeira/x86_64-vcruntime/msvcp140_codecvt_ids.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8994030Z [36;1m  app/Madeira/x86_64-vcruntime/vcamp140.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8994380Z [36;1m  app/Madeira/x86_64-vcruntime/vccorlib140.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8994810Z [36;1m  app/Madeira/x86_64-vcruntime/vcomp140.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8995150Z [36;1m  app/Madeira/x86_64-vcruntime/vcruntime140.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8995560Z [36;1m  app/Madeira/x86_64-vcruntime/vcruntime140_1.dll \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8996000Z [36;1m  app/Madeira/x86_64-vcruntime/vcruntime140_threads.dll; do[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8996350Z [36;1m  if [[ ! -e "$path" ]]; then[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8996690Z [36;1m    printf 'MISSING %s\n' "$path" | tee -a "$report"[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8997030Z [36;1m    missing=$((missing + 1))[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8997400Z [36;1m    if [[ "$path" == app/Madeira/x86_64-vcruntime/* ]]; then[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8997760Z [36;1m      runtime_missing=true[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8998050Z [36;1m    fi[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8998260Z [36;1m  fi[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8998510Z [36;1mdone[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8998840Z [36;1mprintf 'missing_count=%s\n' "$missing" | tee -a "$report"[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8999210Z [36;1mecho "missing=$missing" >> "$GITHUB_OUTPUT"[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.8999670Z [36;1mecho "runtime_missing=$runtime_missing" >> "$GITHUB_OUTPUT"[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9000030Z [36;1m[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9000460Z [36;1mfor path in app/Madeira/nls app/Madeira/aarch64-windows \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9000860Z [36;1m            app/Madeira/legal app/Madeira/arm64ec-windows \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9001280Z [36;1m            app/Madeira/i386-windows app/Madeira/d3d12 \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9001720Z [36;1m            app/Madeira/licenses app/Madeira/prefix-template.tar.gz \[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9002150Z [36;1m            app/Madeira/cacert.pem; do[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9002520Z [36;1m  if [[ ! -e "$path" ]]; then[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9002850Z [36;1m    printf 'MISSING RESOURCE %s\n' "$path" | tee -a "$report"[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9003500Z [36;1m    missing=$((missing + 1))[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9003760Z [36;1m  fi[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9003980Z [36;1mdone[0m
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9044120Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9044430Z ##[endgroup]
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9374030Z MISSING FEX/build-ios/FEXCore/Source/libFEXCore.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9402450Z MISSING FEX/build-ios/FEXCore/Source/libFEXCore_Base.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9426450Z MISSING FEX/build-ios/FEXCore/Source/libJemallocLibs.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9453380Z MISSING FEX/build-ios/External/fmt/libfmt.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9481410Z MISSING FEX/build-ios/External/cephes/libcephes_128bit.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9504940Z MISSING FEX/build-ios/External/xxhash/cmake_unofficial/libxxhash.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9530500Z MISSING FEX/build-ios/External/SoftFloat-3e/libsoftfloat_3e.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9617570Z MISSING app/Madeira/libntdll_unix.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9641800Z MISSING app/Madeira/libwineserver.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9799500Z MISSING app/Madeira/libwin32u_unix.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9824140Z MISSING app/Madeira/libdxmt_combined.a
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9846760Z MISSING app/Madeira/x86_64-vcruntime/concrt140.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9870630Z MISSING app/Madeira/x86_64-vcruntime/msvcp140.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9895430Z MISSING app/Madeira/x86_64-vcruntime/msvcp140_1.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9922170Z MISSING app/Madeira/x86_64-vcruntime/msvcp140_2.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9945870Z MISSING app/Madeira/x86_64-vcruntime/msvcp140_atomic_wait.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9971140Z MISSING app/Madeira/x86_64-vcruntime/msvcp140_codecvt_ids.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:06.9994760Z MISSING app/Madeira/x86_64-vcruntime/vcamp140.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:07.0015710Z MISSING app/Madeira/x86_64-vcruntime/vccorlib140.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:07.0037910Z MISSING app/Madeira/x86_64-vcruntime/vcomp140.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:07.0061740Z MISSING app/Madeira/x86_64-vcruntime/vcruntime140.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:07.0085920Z MISSING app/Madeira/x86_64-vcruntime/vcruntime140_1.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:07.0112370Z MISSING app/Madeira/x86_64-vcruntime/vcruntime140_threads.dll
+Debug IPA build	Build readiness audit	2026-09-28T14:33:07.0139330Z missing_count=23
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	﻿2026-09-28T14:33:07.0492040Z ##[group]Run echo 'The Xcode Resources phase requires the twelve unmodified Microsoft DLLs listed in tools/fetch-vcruntime.md.'
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0492870Z [36;1mecho 'The Xcode Resources phase requires the twelve unmodified Microsoft DLLs listed in tools/fetch-vcruntime.md.'[0m
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0493580Z [36;1mecho 'Supply them locally for a non-public build. Project policy does not permit publishing them in this public IPA artifact.'[0m
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0494070Z [36;1mexit 1[0m
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0525870Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0526170Z ##[endgroup]
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0771850Z The Xcode Resources phase requires the twelve unmodified Microsoft DLLs listed in tools/fetch-vcruntime.md.
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0773140Z Supply them locally for a non-public build. Project policy does not permit publishing them in this public IPA artifact.
+Debug IPA build	Stop if user-supplied Microsoft runtime files are absent	2026-09-28T14:33:07.0791780Z ##[error]Process completed with exit code 1.
+Debug IPA build	Record outcome	﻿2026-09-28T14:33:07.0898000Z ##[group]Run {
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0898250Z [36;1m{[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0898490Z [36;1m  echo "source_commit=$(git rev-parse HEAD)"[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0898810Z [36;1m  echo "xcodebuild_outcome=$BUILD_OUTCOME"[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0899060Z [36;1m  echo "missing_inputs=23"[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0899290Z [36;1m} | tee build-evidence/outcome.txt[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0899550Z [36;1mif [[ "$BUILD_OUTCOME" != success ]]; then[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0899970Z [36;1m  echo 'The build did not succeed; no IPA was created.' | tee -a build-evidence/outcome.txt[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0900360Z [36;1mfi[0m
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0934740Z shell: /bin/bash --noprofile --norc -e -o pipefail {0}
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0935030Z env:
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0935220Z   BUILD_OUTCOME: skipped
+Debug IPA build	Record outcome	2026-09-28T14:33:07.0935690Z ##[endgroup]
+Debug IPA build	Record outcome	2026-09-28T14:33:07.1253450Z source_commit=645e1034bc82f15da204fc893db141bfa8709783
+Debug IPA build	Record outcome	2026-09-28T14:33:07.1254460Z xcodebuild_outcome=skipped
+Debug IPA build	Record outcome	2026-09-28T14:33:07.1254980Z missing_inputs=23
+Debug IPA build	Record outcome	2026-09-28T14:33:07.1279650Z The build did not succeed; no IPA was created.
+Debug IPA build	Upload build evidence	﻿2026-09-28T14:33:07.1601940Z ##[group]Run actions/upload-artifact@v4
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1602220Z with:
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1602390Z   name: madeira-macos-build-evidence
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1602630Z   path: build-evidence/
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1602830Z   if-no-files-found: error
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1603020Z   retention-days: 30
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1603230Z   compression-level: 6
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1603410Z   overwrite: false
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1603580Z   include-hidden-files: false
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.1603770Z ##[endgroup]
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.3372330Z (node:7822) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.3378840Z (Use `node --trace-deprecation ...` to show where the warning was created)
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.3438780Z With the provided path, there will be 9 files uploaded
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.3441750Z Artifact name is valid!
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.3442500Z Root directory input is valid!
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.6429440Z (node:7822) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.6537390Z Beginning upload of artifact content to blob storage
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.6869460Z Uploaded bytes 31875
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.7039260Z Finished uploading artifact content to blob storage!
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.7040950Z SHA256 digest of uploaded artifact zip is c7a8aa845908088977c48620b9edf264859e975f72baa069c45faa40a3e533e1
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.7042520Z Finalizing artifact upload
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.9714070Z Artifact madeira-macos-build-evidence.zip successfully finalized. Artifact ID 10975124198
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.9726010Z Artifact madeira-macos-build-evidence has been successfully uploaded! Final size is 31875 bytes. Artifact ID is 10975124198
+Debug IPA build	Upload build evidence	2026-09-28T14:33:07.9730060Z Artifact download URL: https://github.com/CheatoOfficial/Madeira/actions/runs/36436248487/artifacts/10975124198
+Debug IPA build	Post Check out source and pinned submodules	﻿2026-09-28T14:33:07.9884400Z Post job cleanup.
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.0952340Z [command]/opt/homebrew/bin/git version
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1013150Z git version 2.55.0
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1031610Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/838e52a7-dca4-4353-84e7-54987608c606/.gitconfig'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1048600Z Temporarily overriding HOME='/Users/runner/work/_temp/838e52a7-dca4-4353-84e7-54987608c606' before making global git config changes
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1051550Z Adding repository directory to the temporary git global config as a safe directory
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1076590Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/Madeira/Madeira
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1124890Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.1187960Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.2006840Z Entering 'FEX'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.2228530Z Entering 'FEX/External/Catch2'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.2735950Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.3036490Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.3339910Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.3742310Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.4143530Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.4445240Z Entering 'FEX/External/fmt'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.4849000Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.5150200Z Entering 'FEX/External/range-v3'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.5553070Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.5954210Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.6457440Z Entering 'FEX/External/tracy'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.6759310Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.7060790Z Entering 'FEX/External/vixl'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.7392990Z Entering 'FEX/External/xxhash'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.7795920Z Entering 'FEX/External/zydis'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.8166710Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.8499420Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.8892510Z Entering 'research/dxmt'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.9294510Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:08.9656570Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.0021730Z Entering 'wine'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.0322850Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.0371680Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.0380230Z [command]/opt/homebrew/bin/git config --local --unset-all http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.0445680Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.1530390Z Entering 'FEX'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.1940420Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2107210Z Entering 'FEX/External/Catch2'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2241210Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2357490Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2476280Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2581740Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2721110Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2852390Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.2984180Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3100880Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3235020Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3352110Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3516630Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3699110Z Entering 'FEX/External/fmt'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3862100Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.3976530Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4094710Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4196860Z Entering 'FEX/External/range-v3'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4316700Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4420790Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4533480Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4642830Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4795950Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.4937230Z Entering 'FEX/External/tracy'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5073400Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5191400Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5331440Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5453990Z Entering 'FEX/External/vixl'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5626160Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5752790Z Entering 'FEX/External/xxhash'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.5941940Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6082360Z Entering 'FEX/External/zydis'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6217870Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6339770Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6516250Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6633290Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6755850Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.6868850Z Entering 'research/dxmt'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7003950Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7121270Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7256840Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7371560Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7499780Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7620100Z Entering 'wine'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7768290Z http.https://github.com/.extraheader
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.7932160Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.8013170Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.8745210Z Entering 'FEX'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.8828850Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.8889410Z Entering 'FEX/External/Catch2'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.8982040Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/Catch2/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9185730Z Entering 'FEX/External/Vulkan-Headers'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9287170Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/Vulkan-Headers/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9488400Z Entering 'FEX/External/drm-headers'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9589400Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/drm-headers/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9691760Z Entering 'FEX/External/fex-gcc-target-tests-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9892900Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-gcc-target-tests-bins/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:09.9994230Z Entering 'FEX/External/fex-gvisor-tests-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.0206980Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-gvisor-tests-bins/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.0296520Z Entering 'FEX/External/fex-posixtest-bins'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.0506870Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-posixtest-bins/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.0609390Z Entering 'FEX/External/fmt'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.0810710Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fmt/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.0910630Z Entering 'FEX/External/jemalloc_glibc'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1112060Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/jemalloc_glibc/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1213690Z Entering 'FEX/External/range-v3'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1314190Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/range-v3/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1414820Z Entering 'FEX/External/range-v3/doc/gh-pages'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1616220Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/range-v3/modules/doc/gh-pages/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1716380Z Entering 'FEX/External/rpmalloc'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1817300Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/rpmalloc/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.1917970Z Entering 'FEX/External/tracy'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2119550Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/tracy/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2219860Z Entering 'FEX/External/unordered_dense'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2321370Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/unordered_dense/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2421430Z Entering 'FEX/External/vixl'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2523000Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/vixl/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2623130Z Entering 'FEX/External/xxhash'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2825190Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/xxhash/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.2925060Z Entering 'FEX/External/zydis'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3027350Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/zydis/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3128600Z Entering 'FEX/External/zydis/dependencies/zycore'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3230570Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/zydis/modules/dependencies/zycore/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3331940Z Entering 'FEX/Source/Common/cpp-optparse'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3528100Z file:/Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/cpp-optparse/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3629360Z Entering 'research/dxmt'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3730790Z file:/Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3832360Z Entering 'research/dxmt/external/nvapi'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.3934100Z file:/Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/modules/external/nvapi/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4035970Z Entering 'research/dxmt/include/native/directx'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4232020Z file:/Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/modules/include/native/directx/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4333510Z Entering 'wine'
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4434730Z file:/Users/runner/work/Madeira/Madeira/.git/modules/wine/config	remote.origin.url
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4701240Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4815240Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/Catch2/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4833620Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/Vulkan-Headers/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4859250Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/drm-headers/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4888090Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-gcc-target-tests-bins/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4931070Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-gvisor-tests-bins/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4985170Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fex-posixtest-bins/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.4988840Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/fmt/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5052750Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/jemalloc_glibc/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5116490Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/range-v3/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5176260Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/range-v3/modules/doc/gh-pages/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5235100Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/rpmalloc/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5297110Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/tracy/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5357890Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/unordered_dense/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5414830Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/vixl/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5469560Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/xxhash/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5526810Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/zydis/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5583390Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/zydis/modules/dependencies/zycore/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5641660Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/FEX/modules/External/cpp-optparse/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5705660Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5766860Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/modules/external/nvapi/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5827570Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/research/dxmt/modules/include/native/directx/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Post Check out source and pinned submodules	2026-09-28T14:33:10.5891230Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/Madeira/Madeira/.git/modules/wine/config --name-only --get-regexp ^includeIf\.gitdir:
+Debug IPA build	Complete job	﻿2026-09-28T14:33:10.6167430Z Cleaning up orphan processes
+Debug IPA build	Complete job	2026-09-28T14:33:12.0330570Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache@v4, actions/checkout@v4, actions/upload-artifact@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/
