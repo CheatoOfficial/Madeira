@@ -35,11 +35,14 @@ vcruntime140_threads.dll
 ```
 
 The project policy in `tools/fetch-vcruntime.md` says these Microsoft-authored
-DLLs are not distributable under the project license and must be supplied by
-the user. Therefore no public repository commit or downloadable IPA artifact
-will contain them. A complete app build needs the user-supplied, unmodified
-files extracted from Microsoft's official `VC_redist.x64.exe`, with their
-Authenticode signatures intact. Do not omit them from an IPA silently.
+DLLs are not distributable under the project license. They are not committed
+or included in public downloadable artifacts. The workflow downloads the
+version-pinned official Microsoft `VC_redist.x64.exe` to the temporary macOS
+runner and verifies the EXE and each extracted DLL against
+`vc-runtime-provenance.json`. A validated IPA can be assembled on that runner,
+but it is not uploaded because it contains the DLLs. A local Windows copy has
+also been staged and verified; its files remain ignored by git. Do not omit the
+DLLs from an IPA silently.
 
 ## macOS build status
 
@@ -47,12 +50,13 @@ The Windows workspace has no Xcode, and no complete IPA exists. Public macOS
 run [36436248487](https://github.com/CheatoOfficial/Madeira/actions/runs/36436248487)
 allocated a runner, checked out recursive submodules, and recorded macOS 15.7.9,
 Xcode 16.4 (16F6), and iPhoneOS SDK 18.5. Its readiness audit found 23 missing
-inputs: the eleven generated linker archives and the twelve user-supplied
-Microsoft DLLs listed above. It stopped before any native build, as intended.
-The current toolchain fix still needs a real link attempt after all required
-inputs are supplied. The user declined extra Actions spending; this public
-standard-runner job did start without the previous private-repository billing
-block.
+inputs: the eleven generated linker archives and the twelve Microsoft DLLs
+listed above. It stopped before any native build. The current workflow removes
+that premature stop, fetches and verifies the official redistributable on the
+runner, then attempts the complete native and Xcode build. That run is pending;
+the prior run did not test any source or linker fix. The user declined extra
+Actions spending; this public standard-runner job started without the previous
+private-repository billing block.
 
 ## Previous private-repository runner failures
 

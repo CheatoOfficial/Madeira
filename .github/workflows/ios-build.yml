@@ -97,10 +97,6 @@ jobs:
               fi
             fi
           done
-          printf 'missing_count=%s\n' "$missing" | tee -a "$report"
-          echo "missing=$missing" >> "$GITHUB_OUTPUT"
-          echo "runtime_missing=$runtime_missing" >> "$GITHUB_OUTPUT"
-
           for path in app/Madeira/nls app/Madeira/aarch64-windows \
                       app/Madeira/legal app/Madeira/arm64ec-windows \
                       app/Madeira/i386-windows app/Madeira/d3d12 \
@@ -111,19 +107,28 @@ jobs:
               missing=$((missing + 1))
             fi
           done
-
-      - name: Stop if user-supplied Microsoft runtime files are absent
-        if: steps.audit.outputs.runtime_missing == 'true'
-        shell: bash
-        run: |
-          echo 'The Xcode Resources phase requires the twelve unmodified Microsoft DLLs listed in tools/fetch-vcruntime.md.'
-          echo 'Supply them locally for a non-public build. Project policy does not permit publishing them in this public IPA artifact.'
-          exit 1
+          printf 'missing_count=%s\n' "$missing" | tee -a "$report"
+          echo "missing=$missing" >> "$GITHUB_OUTPUT"
+          echo "runtime_missing=$runtime_missing" >> "$GITHUB_OUTPUT"
 
       - name: Install FEX build tools
         run: |
-          brew install cmake ninja ccache llvm
+          brew install cmake ninja ccache llvm p7zip
           xcodebuild -downloadComponent MetalToolchain 2>&1 | tee build-evidence/metal-toolchain.log
+
+      - name: Stage verified Microsoft runtime files for the ephemeral build
+        shell: bash
+        run: |
+          set -euo pipefail
+          installer="$RUNNER_TEMP/VC_redist.x64.exe"
+          curl -fL --retry 3 https://aka.ms/vs/17/release/14.44.35211/VC_redist.x64.exe -o "$installer"
+          echo 'CC0FF0EB1DC3F5188AE6300FAEF32BF5BEEBA4BDD6E8E445A9184072096B713B  '"$installer" | shasum -a 256 -c -
+          python3 tools/extract-vcruntime.py \
+            --installer "$installer" \
+            --provenance vc-runtime-provenance.json \
+            --destination app/Madeira/x86_64-vcruntime \
+            --sevenzip "$(command -v 7z)" \
+            2>&1 | tee build-evidence/vcruntime-staging.log
 
       - name: Build redistributable helper libraries
         shell: bash
@@ -240,12 +245,34 @@ jobs:
             build 2>&1 | tee build-evidence/full-build.log
 
       - name: Package and validate unsigned IPA
+        id: package
         if: steps.xcodebuild.outcome == 'success'
         shell: bash
         run: |
           set -euo pipefail
           APP="$PWD/DerivedData/Build/Products/Debug-iphoneos/Madeira.app"
           test -d "$APP"
+          test -f "$APP/Info.plist"
+          test -x "$APP/Madeira"
+          lipo -verify_arch arm64 "$APP/Madeira"
+          xcrun vtool -show-build "$APP/Madeira" | tee build-evidence/main-macho-platform.txt
+          grep -q 'platform IOS' build-evidence/main-macho-platform.txt
+          for path in nls aarch64-windows arm64ec-windows i386-windows d3d12 licenses; do
+            test -d "$APP/$path" || { echo "Missing bundled directory: $path"; exit 1; }
+          done
+          dlls=("$APP/x86_64-vcruntime"/*.dll)
+          test "${#dlls[@]}" -eq 12 || { echo "Expected 12 bundled VC++ runtime DLLs; found ${#dlls[@]}"; exit 1; }
+          for dll in app/Madeira/x86_64-vcruntime/*.dll; do
+            cmp "$dll" "$APP/x86_64-vcruntime/${dll##*/}"
+          done
+          find "$APP" -type f \( -name '*.dylib' -o -name '*.framework' \) -print0 | while IFS= read -r -d '' file; do
+            file "$file"
+            if [[ "$file" == *.dylib ]]; then lipo -verify_arch arm64 "$file"; xcrun vtool -show-build "$file"; fi
+          done | tee build-evidence/bundled-dylib-audit.txt
+          if find "$APP" -type f \( -name '*.mobileprovision' -o -name '*.p12' -o -name '*.pfx' -o -name 'AuthKey_*.p8' -o -name 'id_rsa' -o -name 'id_ed25519' \) | grep -q .; then
+            echo 'Signing credential or provisioning material found in app'; exit 1
+          fi
+          if find "$APP" -name 'embedded.mobileprovision' | grep -q .; then echo 'Provisioning profile found in app'; exit 1; fi
           mkdir -p package/Payload
           cp -R "$APP" package/Payload/Madeira.app
           (cd package && /usr/bin/zip -qry "$GITHUB_WORKSPACE/Madeira-ml2013-unsigned.ipa" Payload)
@@ -255,18 +282,14 @@ jobs:
           test -f "$BUNDLE/Info.plist"
           test -x "$BUNDLE/Madeira"
           lipo -verify_arch arm64 "$BUNDLE/Madeira"
-          xcrun vtool -show-build "$BUNDLE/Madeira" | tee build-evidence/main-macho-platform.txt
-          grep -q 'platform IOS' build-evidence/main-macho-platform.txt
-          for path in nls aarch64-windows arm64ec-windows i386-windows d3d12 licenses; do
+          xcrun vtool -show-build "$BUNDLE/Madeira" | tee build-evidence/ipa-main-macho-platform.txt
+          grep -q 'platform IOS' build-evidence/ipa-main-macho-platform.txt
+          for path in nls aarch64-windows arm64ec-windows i386-windows d3d12 licenses x86_64-vcruntime; do
             test -d "$BUNDLE/$path" || { echo "Missing bundled directory: $path"; exit 1; }
           done
           dlls=("$BUNDLE/x86_64-vcruntime"/*.dll)
-          test "${#dlls[@]}" -eq 12
+          test "${#dlls[@]}" -eq 12 || { echo "Expected 12 DLLs in IPA; found ${#dlls[@]}"; exit 1; }
           for dll in "${dlls[@]}"; do test -f "$dll"; done
-          find "$BUNDLE" -type f \( -name '*.dylib' -o -name '*.framework' \) -print0 | while IFS= read -r -d '' file; do
-            file "$file"
-            if [[ "$file" == *.dylib ]]; then lipo -verify_arch arm64 "$file"; xcrun vtool -show-build "$file"; fi
-          done | tee build-evidence/bundled-dylib-audit.txt
           if find "$BUNDLE" -type f \( -name '*.mobileprovision' -o -name '*.p12' -o -name '*.pfx' -o -name 'AuthKey_*.p8' -o -name 'id_rsa' -o -name 'id_ed25519' \) | grep -q .; then
             echo 'Signing credential or provisioning material found in IPA'; exit 1
           fi
@@ -274,6 +297,7 @@ jobs:
           IPA_SIZE=$(stat -f %z Madeira-ml2013-unsigned.ipa)
           IPA_SHA=$(shasum -a 256 Madeira-ml2013-unsigned.ipa | awk '{print $1}')
           printf '%s  %s\n' "$IPA_SHA" Madeira-ml2013-unsigned.ipa > SHA256SUMS.txt
+          printf 'IPA assembled and validated on the macOS runner.\nSHA-256: %s\nSize: %s bytes\nNot uploaded: public artifacts must not redistribute the Microsoft DLLs under this project policy.\n' "$IPA_SHA" "$IPA_SIZE" > build-evidence/ipa-artifact-policy.txt
           python3 - "$IPA_SIZE" "$IPA_SHA" <<'PY'
           import json, pathlib, subprocess, sys
           size, digest = int(sys.argv[1]), sys.argv[2]
@@ -294,13 +318,12 @@ jobs:
           pathlib.Path("build-manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
           PY
 
-      - name: Upload IPA and build records
-        if: steps.xcodebuild.outcome == 'success'
+      - name: Upload build validation records
+        if: steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
-          name: Madeira-ml2013-unsigned-IPA
+          name: Madeira-ml2013-unsigned-build-validation
           path: |
-            Madeira-ml2013-unsigned.ipa
             SHA256SUMS.txt
             build-manifest.json
             build-evidence/
@@ -313,14 +336,16 @@ jobs:
         shell: bash
         env:
           BUILD_OUTCOME: ${{ steps.xcodebuild.outcome }}
+          PACKAGE_OUTCOME: ${{ steps.package.outcome }}
         run: |
           {
             echo "source_commit=$(git rev-parse HEAD)"
             echo "xcodebuild_outcome=$BUILD_OUTCOME"
+            echo "package_validation_outcome=$PACKAGE_OUTCOME"
             echo "missing_inputs=${{ steps.audit.outputs.missing }}"
           } | tee build-evidence/outcome.txt
-          if [[ "$BUILD_OUTCOME" != success ]]; then
-            echo 'The build did not succeed; no IPA was created.' | tee -a build-evidence/outcome.txt
+          if [[ "$BUILD_OUTCOME" != success || "$PACKAGE_OUTCOME" != success ]]; then
+            echo 'The build or IPA validation did not succeed.' | tee -a build-evidence/outcome.txt
           fi
 
       - name: Upload build evidence
@@ -332,6 +357,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Fail if Xcode build failed
-        if: steps.xcodebuild.outcome != 'success'
+      - name: Fail if the build or package validation failed
+        if: steps.xcodebuild.outcome != 'success' || steps.package.outcome != 'success'
         run: exit 1

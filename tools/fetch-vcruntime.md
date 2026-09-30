@@ -2,7 +2,7 @@
 
 Games built with MSVC need the Visual C++ runtime. Those DLLs are authored by
 Microsoft and are **not** redistributable under this project's license, so they
-are not committed here. You supply them yourself.
+are not committed to the repository or included in public build artifacts.
 
 Twelve files are expected in `app/Madeira/x86_64-vcruntime/`:
 
@@ -16,17 +16,25 @@ msvcp140_atomic_wait.dll
 
 ## How to get them
 
-Download the official x64 redistributable from Microsoft
-(`VC_redist.x64.exe`) and extract it. On macOS, 7-Zip can do this:
+Download the pinned official x64 redistributable from Microsoft. Its version,
+download URL, EXE SHA-256, and expected DLL SHA-256 values are recorded in
+`vc-runtime-provenance.json`. The extraction script scans the embedded CABs,
+selects the twelve expected x64 files, and rejects any file with a different
+hash:
 
 ```sh
-brew install sevenzip
-7zz x VC_redist.x64.exe -o/tmp/vcredist
-7zz x /tmp/vcredist/.rsrc/1033/CABINET/*.cab -oapp/Madeira/x86_64-vcruntime
+brew install p7zip
+python3 tools/extract-vcruntime.py \
+  --installer VC_redist.x64.exe \
+  --provenance vc-runtime-provenance.json \
+  --destination app/Madeira/x86_64-vcruntime
 ```
 
-Exact layout varies by redistributable version; the goal is simply the twelve
-files above, **byte-for-byte as Microsoft shipped them**.
+The public macOS workflow downloads that same pinned installer and stages its
+contents only on the temporary runner to compile and validate the app. The IPA
+is not attached to the public Actions artifact because it contains these DLLs.
+For local builds, keep the files byte-for-byte as Microsoft shipped them and
+leave them untracked.
 
 ## Do not modify them
 
