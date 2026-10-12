@@ -3,7 +3,7 @@
 # shipped as xtajit64.dll). Options mirror the development build's CMakeCache.
 set -eu
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-export PATH="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin:$PATH"
+export PATH="$R/toolchains/llvm-mingw-20260728-ucrt-macos-universal/bin:$PATH"
 B="$R/FEX/build-arm64ec"
 if [ -f "$B/CMakeCache.txt" ] && { \
     ! grep -q '^TUNE_CPU:STRING=generic$' "$B/CMakeCache.txt" || \
@@ -11,7 +11,7 @@ if [ -f "$B/CMakeCache.txt" ] && { \
     ! grep -q '^FEX_IOS_HOST_BUILD:BOOL=ON$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
-    ! grep -q 'llvm-mingw-20261006-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang' "$B/CMakeCache.txt" || \
+    ! grep -q 'llvm-mingw-20260728-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_DISABLE_FIND_PACKAGE_fmt:BOOL=TRUE$' "$B/CMakeCache.txt"; \
 }; then
     rm -rf "$B"
@@ -29,8 +29,8 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
         -DBUILD_FEXCONFIG=ON -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON \
         -DBUILD_TESTING=OFF -DBUILD_THUNKS=OFF -DENABLE_ASSERTIONS=OFF
 fi
-EC_CXX="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang++"
-LLVM_NM="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin/llvm-nm"
+EC_CXX="$R/toolchains/llvm-mingw-20260728-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang++"
+LLVM_NM="$R/toolchains/llvm-mingw-20260728-ucrt-macos-universal/bin/llvm-nm"
 "$EC_CXX" --version
 for runtime in libc++.a libc++abi.a libunwind.a; do
     archive="$("$EC_CXX" -print-file-name="$runtime")"

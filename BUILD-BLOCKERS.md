@@ -46,38 +46,34 @@ DLLs from an IPA silently.
 
 ## Latest macOS build attempt
 
-Run [38224054649](https://github.com/CheatoOfficial/Madeira/actions/runs/38224054649)
-reached the FEX ARM64EC compile after the runtime staging and redistributable
-helper-library steps succeeded. It failed in
-`FEXCore/Source/Common/StringConv.h`: the pinned FEX code called
-`std::strtoll` and `std::strtoull`, but the llvm-mingw ARM64EC headers exposed
-those names only in the global namespace. Adding `<cstdlib>` alone did not fix
-the issue. The follow-up patch adds `<stdlib.h>` and calls `::strtoll` and
-`::strtoull`; it applies cleanly to the pinned FEX commit. A fresh run,
-[38225642118](https://github.com/CheatoOfficial/Madeira/actions/runs/38225642118),
-failed against commit `e169aa39dc704e2c699bbd1f0ecc590489166c76` while linking
-the ARM64EC FEX library. The next attempt pins LLVM-MinGW `20261006`, whose
-official ARM64EC C++ runtime archives contain aliases for the unresolved
-standard-library symbols from that link. Run `38227611892` confirmed that
-FEX compiles with this toolchain but the link has left libc++ EC symbols
-unresolved. Run [38237643171](https://github.com/CheatoOfficial/Madeira/actions/runs/38237643171)
-reached the linker but whole-archiving both libc++ and libc++abi produced
-duplicate exception runtime symbols. Run
-[38243920366](https://github.com/CheatoOfficial/Madeira/actions/runs/38243920366)
-whole-archived only libc++ and reduced the unresolved symbols to
-`__gxx_personality_seh0` and `access`.
+Run [38250460228](https://github.com/CheatoOfficial/Madeira/actions/runs/38250460228)
+for commit `5b40cd9cb0575a586b537901dfad408985f6411d` reached the FEX ARM64EC
+link after the runtime staging and redistributable helper-library steps
+succeeded. The ARM64EC sysroot symlink restored library lookup, and the
+diagnostics confirmed that the runtime archives contain the missing EC
+definitions. Linking those archives in normal order still left libc++ EC
+symbols unresolved because `-lc++ -lc++abi -lunwind` appears before several
+later FEX static archives in the generated response file. The first unresolved
+symbols include `__gxx_personality_seh0`, `std::__1::recursive_mutex::lock`,
+and `std::__1::__shared_mutex_base::lock_shared`. The workflow skipped Wine,
+DXMT, Xcode, and IPA packaging as a result.
 
-The llvm-mingw 20261006 release has no `arm64ec-w64-mingw32` sysroot directory.
-Upstream documents that the ARM64EC driver requires that directory and that a
-symlink to `aarch64-w64-mingw32` restores the intended library lookup
-([llvm-mingw issue 576](https://github.com/mstorsjo/llvm-mingw/issues/576)).
-The next run installs that symlink before building and returns runtime linking
-to normal archive selection. This is a candidate toolchain fix, not a completed
-build.
+The next attempt pins the official LLVM-MinGW `20260728` macOS universal
+release, whose archive contains a native `arm64ec-w64-mingw32` sysroot and C++
+runtime archives (SHA-256
+`38d95a577fed5a16996e8544e66b9d436bc9a29093a8055600ac9862f8f0417f`, verified
+locally). This tests the upstream toolchain layout directly instead of
+reconstructing its sysroot with a symlink. It remains a candidate fix; no full
+build or IPA has succeeded.
 
-Run [38224006747](https://github.com/CheatoOfficial/Madeira/actions/runs/38224006747)
-tested the same insufficient `<cstdlib>` fix and failed with the same errors.
-Neither run reached Wine native archives, DXMT, Xcode, or IPA packaging.
+Earlier attempts established that `<cstdlib>` alone did not fix FEX's
+`std::strtoll` declarations, while adding `<stdlib.h>` and using the global
+`::strtoll`/`::strtoull` declarations allowed compilation. Runs
+[38237643171](https://github.com/CheatoOfficial/Madeira/actions/runs/38237643171)
+and [38243920366](https://github.com/CheatoOfficial/Madeira/actions/runs/38243920366)
+also showed that whole-archiving both libc++ and libc++abi introduces duplicate
+exception-runtime symbols. No attempt has reached Wine native archives, DXMT,
+Xcode, or IPA packaging.
 
 ## macOS build status
 
