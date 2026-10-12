@@ -7,6 +7,6 @@ index 0000000..0000000 100644
 +  # The static archives later on this link line introduce libc++ references
 +  # after the normal runtime scan. Include runtime members up front so those
 +  # ARM64EC references are available to the complete link.
-+  target_link_libraries(arm64ecfex PRIVATE -Wl,--whole-archive c++ c++abi unwind -Wl,--no-whole-archive)
++  target_link_libraries(arm64ecfex PRIVATE -Wl,--whole-archive c++ -Wl,--no-whole-archive c++abi unwind)
  else()
    target_link_options(arm64ecfex PRIVATE -static -nostdlib -nostartfiles -nodefaultlibs -lc++ -lc++abi -lunwind)

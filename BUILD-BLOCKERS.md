@@ -60,11 +60,13 @@ the ARM64EC FEX library. The next attempt pins LLVM-MinGW `20261006`, whose
 official ARM64EC C++ runtime archives contain aliases for the unresolved
 standard-library symbols from that link. Run `38227611892` confirmed that
 FEX compiles with this toolchain but the link still leaves libc++ EC symbols
-unresolved. A subsequent run failed before linking because its new patch
-overlapped the existing ARM64EC link patch. The current patch instead wraps
-the three runtime archives in whole-archive flags, ensuring their members are
-available when later FEXCore archives introduce references. This candidate
-link fix must be verified on macOS; it does not establish a successful build.
+unresolved. Run [38237643171](https://github.com/CheatoOfficial/Madeira/actions/runs/38237643171)
+verified the link-patch application and reached the ARM64EC linker. Whole-
+archiving both libc++ and libc++abi produced duplicate exception runtime
+symbols because those archives overlap. The next attempt whole-archives only
+libc++, leaving libc++abi and libunwind to normal archive selection. This
+candidate link fix must be verified on macOS; it does not establish a
+successful build.
 
 Run [38224006747](https://github.com/CheatoOfficial/Madeira/actions/runs/38224006747)
 tested the same insufficient `<cstdlib>` fix and failed with the same errors.
