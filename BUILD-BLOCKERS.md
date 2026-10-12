@@ -44,6 +44,23 @@ but it is not uploaded because it contains the DLLs. A local Windows copy has
 also been staged and verified; its files remain ignored by git. Do not omit the
 DLLs from an IPA silently.
 
+## Latest macOS build attempt
+
+Run [38224054649](https://github.com/CheatoOfficial/Madeira/actions/runs/38224054649)
+reached the FEX ARM64EC compile after the runtime staging and redistributable
+helper-library steps succeeded. It failed in
+`FEXCore/Source/Common/StringConv.h`: the pinned FEX code called
+`std::strtoll` and `std::strtoull`, but the llvm-mingw ARM64EC headers exposed
+those names only in the global namespace. Adding `<cstdlib>` alone did not fix
+the issue. The follow-up patch adds `<stdlib.h>` and calls `::strtoll` and
+`::strtoull`; it applies cleanly to the pinned FEX commit. A fresh run,
+[38225642118](https://github.com/CheatoOfficial/Madeira/actions/runs/38225642118),
+is pending against commit `e169aa39dc704e2c699bbd1f0ecc590489166c76`.
+
+Run [38224006747](https://github.com/CheatoOfficial/Madeira/actions/runs/38224006747)
+tested the same insufficient `<cstdlib>` fix and failed with the same errors.
+Neither run reached Wine native archives, DXMT, Xcode, or IPA packaging.
+
 ## macOS build status
 
 The Windows workspace has no Xcode, and no complete IPA exists. Public macOS
@@ -53,9 +70,9 @@ Xcode 16.4 (16F6), and iPhoneOS SDK 18.5. Its readiness audit found 23 missing
 inputs: the eleven generated linker archives and the twelve Microsoft DLLs
 listed above. It stopped before any native build. The current workflow removes
 that premature stop, fetches and verifies the official redistributable on the
-runner, then attempts the complete native and Xcode build. That run is pending;
-the prior run did not test any source or linker fix. The user declined extra
-Actions spending; this public standard-runner job started without the previous
+runner, then attempts the complete native and Xcode build. The latest attempt
+and its exact failure are recorded above. The user declined extra Actions
+spending; these public standard-runner jobs start without the previous
 private-repository billing block.
 
 ## Previous private-repository runner failures
