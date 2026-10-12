@@ -152,7 +152,6 @@ jobs:
           git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-ios-apple-host.patch"
           git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-arm64ec-ios-link.patch"
           git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-arm64ec-cstdlib.patch"
-          git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-arm64ec-runtime-order.patch"
           bash build/fex-ios/build.sh 2>&1 | tee build-evidence/fex-build.log
           bash build/fex-arm64ec/build.sh 2>&1 | tee build-evidence/fex-arm64ec-build.log
           bash build/wine-pe/build-ntdll.sh 2>&1 | tee build-evidence/wine-pe-build.log
