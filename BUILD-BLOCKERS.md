@@ -59,14 +59,21 @@ failed against commit `e169aa39dc704e2c699bbd1f0ecc590489166c76` while linking
 the ARM64EC FEX library. The next attempt pins LLVM-MinGW `20261006`, whose
 official ARM64EC C++ runtime archives contain aliases for the unresolved
 standard-library symbols from that link. Run `38227611892` confirmed that
-FEX compiles with this toolchain but the link still leaves libc++ EC symbols
+FEX compiles with this toolchain but the link has left libc++ EC symbols
 unresolved. Run [38237643171](https://github.com/CheatoOfficial/Madeira/actions/runs/38237643171)
-verified the link-patch application and reached the ARM64EC linker. Whole-
-archiving both libc++ and libc++abi produced duplicate exception runtime
-symbols because those archives overlap. The next attempt whole-archives only
-libc++, leaving libc++abi and libunwind to normal archive selection. This
-candidate link fix must be verified on macOS; it does not establish a
-successful build.
+reached the linker but whole-archiving both libc++ and libc++abi produced
+duplicate exception runtime symbols. Run
+[38243920366](https://github.com/CheatoOfficial/Madeira/actions/runs/38243920366)
+whole-archived only libc++ and reduced the unresolved symbols to
+`__gxx_personality_seh0` and `access`.
+
+The llvm-mingw 20261006 release has no `arm64ec-w64-mingw32` sysroot directory.
+Upstream documents that the ARM64EC driver requires that directory and that a
+symlink to `aarch64-w64-mingw32` restores the intended library lookup
+([llvm-mingw issue 576](https://github.com/mstorsjo/llvm-mingw/issues/576)).
+The next run installs that symlink before building and returns runtime linking
+to normal archive selection. This is a candidate toolchain fix, not a completed
+build.
 
 Run [38224006747](https://github.com/CheatoOfficial/Madeira/actions/runs/38224006747)
 tested the same insufficient `<cstdlib>` fix and failed with the same errors.
