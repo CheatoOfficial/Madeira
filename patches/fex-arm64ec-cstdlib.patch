@@ -6,7 +6,7 @@ diff --git a/FEXCore/Source/Common/StringConv.h b/FEXCore/Source/Common/StringCo
  #pragma once
  #include <FEXCore/fextl/string.h>
 +#include <stdlib.h>
- 
+
  #include <concepts>
  #include <string_view>
 @@ -9,9 +10,9 @@

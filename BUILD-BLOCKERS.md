@@ -55,7 +55,11 @@ those names only in the global namespace. Adding `<cstdlib>` alone did not fix
 the issue. The follow-up patch adds `<stdlib.h>` and calls `::strtoll` and
 `::strtoull`; it applies cleanly to the pinned FEX commit. A fresh run,
 [38225642118](https://github.com/CheatoOfficial/Madeira/actions/runs/38225642118),
-is pending against commit `e169aa39dc704e2c699bbd1f0ecc590489166c76`.
+failed against commit `e169aa39dc704e2c699bbd1f0ecc590489166c76` while linking
+the ARM64EC FEX library. The next attempt pins LLVM-MinGW `20261006`, whose
+official ARM64EC C++ runtime archives contain aliases for the unresolved
+standard-library symbols from that link. This is a build-toolchain fix to
+verify on macOS; it does not establish a successful build.
 
 Run [38224006747](https://github.com/CheatoOfficial/Madeira/actions/runs/38224006747)
 tested the same insufficient `<cstdlib>` fix and failed with the same errors.
