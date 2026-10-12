@@ -8,6 +8,7 @@ on:
       - '.github/workflows/ios-build.yml'
       - 'app/**'
       - 'build/**'
+      - 'patches/**'
       - 'FEX'
       - 'wine'
       - 'research/dxmt'

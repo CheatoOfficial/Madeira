@@ -2,11 +2,5 @@ diff --git a/FEXCore/Source/Common/StringConv.h b/FEXCore/Source/Common/StringCo
 index 0000000..0000000 100644
 --- a/FEXCore/Source/Common/StringConv.h
 +++ b/FEXCore/Source/Common/StringConv.h
-@@ -2,6 +2,7 @@
- #pragma once
- #include <FEXCore/fextl/string.h>
- 
+@@ -3,0 +4 @@
 +#include <cstdlib>
- #include <concepts>
- #include <string_view>
- 
