@@ -58,8 +58,13 @@ the issue. The follow-up patch adds `<stdlib.h>` and calls `::strtoll` and
 failed against commit `e169aa39dc704e2c699bbd1f0ecc590489166c76` while linking
 the ARM64EC FEX library. The next attempt pins LLVM-MinGW `20261006`, whose
 official ARM64EC C++ runtime archives contain aliases for the unresolved
-standard-library symbols from that link. This is a build-toolchain fix to
-verify on macOS; it does not establish a successful build.
+standard-library symbols from that link. Run `38227611892` confirmed that
+FEX compiles with this toolchain but the link still leaves libc++ EC symbols
+unresolved. The link response places `-lc++ -lc++abi -lunwind` before a later
+FEXCore archive. The next attempt repeats these runtimes after the static
+libraries so the linker can resolve symbols introduced by that later archive.
+This candidate link-order fix must be verified on macOS; it does not establish
+a successful build.
 
 Run [38224006747](https://github.com/CheatoOfficial/Madeira/actions/runs/38224006747)
 tested the same insufficient `<cstdlib>` fix and failed with the same errors.
@@ -89,9 +94,8 @@ Runs [36432170346](https://github.com/CheatoOfficial/GTASanAndreas3DS/actions/ru
 and [36432537267](https://github.com/CheatoOfficial/GTASanAndreas3DS/actions/runs/36432537267)
 failed before runner allocation (`runner_id` 0; no steps or build log). These
 were runs in the previous private destination. The user declined to spend on
-Actions billing. The current workflow uses
-the official LLVM-MinGW `20260922` toolchain, pinned by the published SHA-256;
-that toolchain has not yet run because of this account-level block.
+Actions billing. The current public repository workflow now allocates macOS
+runners; these private-repository failures are historical.
 
 ## Last actual macOS build failure
 
@@ -108,20 +112,10 @@ ld.lld: error: undefined symbol: std::__1::mutex::lock() (EC symbol)
 clang: error: linker command failed with exit code 1
 ```
 
-The workflow now pins official LLVM-MinGW `20260922` (archive SHA-256
-`52e5f5a7b131021d0c39a37a38fa380a1da7885cd04bd61afd0cd4ecfb8bc1f3`). I
-downloaded that exact archive and verified its checksum locally. Its libc++ and
-libc++abi archives contain ARM64EC alias members for the missing C++ mutex and
-exception-personality symbols. This is a promising, source-backed fix, but it
-still needs an actual macOS link run to confirm the toolchain selects and links
-those members correctly.
-
-The complete evidence artifact for that run is `madeira-macos-build-evidence`;
-the run also uploaded `fex-arm64ec-build.log`. The workflow is updated to use
-the current official toolchain and logs the runtime archive symbols before
-linking, but a new macOS run is needed to determine whether that resolves the
-failure. Later Wine PE, DXMT, native Wine archive, Xcode, packaging, and IPA
-validation stages have not completed on this revision.
+This earlier run used LLVM-MinGW `20260616` / Clang 22.1.8. The subsequent
+compile issue and current ARM64EC link issue are documented under “Latest
+macOS build attempt.” The later Wine PE, DXMT, native Wine archive, Xcode,
+packaging, and IPA validation stages have not completed on this revision.
 
 ## Readiness audit
 
