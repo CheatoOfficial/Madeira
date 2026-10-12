@@ -46,24 +46,21 @@ DLLs from an IPA silently.
 
 ## Latest macOS build attempt
 
-Run [38250460228](https://github.com/CheatoOfficial/Madeira/actions/runs/38250460228)
-for commit `5b40cd9cb0575a586b537901dfad408985f6411d` reached the FEX ARM64EC
+Run [38257638232](https://github.com/CheatoOfficial/Madeira/actions/runs/38257638232)
+for commit `cf09eebfeab2daebe09fffb9f94e3bb48b54b52b` reached the FEX ARM64EC
 link after the runtime staging and redistributable helper-library steps
-succeeded. The ARM64EC sysroot symlink restored library lookup, and the
-diagnostics confirmed that the runtime archives contain the missing EC
-definitions. Linking those archives in normal order still left libc++ EC
-symbols unresolved because `-lc++ -lc++abi -lunwind` appears before several
-later FEX static archives in the generated response file. The first unresolved
-symbols include `__gxx_personality_seh0`, `std::__1::recursive_mutex::lock`,
-and `std::__1::__shared_mutex_base::lock_shared`. The workflow skipped Wine,
-DXMT, Xcode, and IPA packaging as a result.
+succeeded. LLVM-MinGW `20260728` provided a native ARM64EC sysroot, but its
+libc++ archive diagnostics exposed only the `#__gxx_personality_seh0` alias and
+not the required EC C++ method definitions. The normal link consequently
+failed on `__gxx_personality_seh0`, mutex and shared-mutex methods, filesystem,
+and other libc++ symbols. Wine, DXMT, Xcode, and IPA packaging were skipped.
 
-The next attempt pins the official LLVM-MinGW `20260728` macOS universal
-release, whose archive contains a native `arm64ec-w64-mingw32` sysroot and C++
-runtime archives (SHA-256
-`38d95a577fed5a16996e8544e66b9d436bc9a29093a8055600ac9862f8f0417f`, verified
-locally). This tests the upstream toolchain layout directly instead of
-reconstructing its sysroot with a symlink. It remains a candidate fix; no full
+The next attempt returns to official LLVM-MinGW `20261006`, whose runtime
+archives contain the required EC definitions. Its sysroot symlink restores
+library lookup, but the generated response file placed the runtime archives
+before later FEX static archives. The build script now appends a second
+`-lc++ -lc++abi -lunwind` pass after those archives to resolve symbols
+introduced later in the link. This is an unverified link-order fix; no full
 build or IPA has succeeded.
 
 Earlier attempts established that `<cstdlib>` alone did not fix FEX's
