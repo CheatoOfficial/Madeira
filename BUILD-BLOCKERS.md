@@ -58,12 +58,12 @@ and other libc++ symbols. Wine, DXMT, Xcode, and IPA packaging were skipped.
 Run [38264269586](https://github.com/CheatoOfficial/Madeira/actions/runs/38264269586)
 for commit `093b4b0040dea193596c852818007ff6c3c9c492` confirmed that a second
 `-lc++ -lc++abi -lunwind` pass after the FEX static archives does not fix the
-unresolved EC symbols. Although the runtime archive lists ordinary libc++
-definitions, the linker requires EC definitions. Upstream LLVM-MinGW's
-ARM64X change explains this mismatch: its AArch64 libc++ libraries are built
-with `-marm64x` to include ARM64EC support. The next attempt adds `-marm64x` to
-FEX C, C++, and assembly compilation so FEX matches those hybrid runtime
-archives. This is unverified; no full build or IPA has succeeded.
+unresolved EC symbols. Upstream LLVM-MinGW's ARM64X change moves ARM64EC
+runtime support into the AArch64 sysroot. Run `38385791874` then showed that
+passing `-marm64x` to the dedicated ARM64EC compiler is rejected by Clang:
+`unsupported option '-marm64x' for target 'arm64ec-w64-mingw32'`. The next
+attempt uses the upstream-documented AArch64 compiler driver with an explicit
+plain ARM64EC target. This is unverified; no full build or IPA has succeeded.
 
 Earlier attempts established that `<cstdlib>` alone did not fix FEX's
 `std::strtoll` declarations, while adding `<stdlib.h>` and using the global
