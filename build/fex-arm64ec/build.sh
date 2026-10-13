@@ -12,6 +12,7 @@ if [ -f "$B/CMakeCache.txt" ] && { \
     ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
     ! grep -q 'llvm-mingw-20261006-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_C_COMPILER_TARGET:STRING=arm64ec-w64-windows-gnu$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_CXX_COMPILER_TARGET:STRING=arm64ec-w64-windows-gnu$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_DISABLE_FIND_PACKAGE_fmt:BOOL=TRUE$' "$B/CMakeCache.txt"; \
 }; then

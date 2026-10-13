@@ -1,8 +1,7 @@
 diff --git a/Data/CMake/toolchain_mingw.cmake b/Data/CMake/toolchain_mingw.cmake
 --- a/Data/CMake/toolchain_mingw.cmake
 +++ b/Data/CMake/toolchain_mingw.cmake
-@@ -2,6 +2,14 @@
- 
+@@ -3,5 +3,13 @@
  set(CMAKE_RC_COMPILER ${MINGW_TRIPLE}-windres)
  set(CMAKE_C_COMPILER ${MINGW_TRIPLE}-clang)
  set(CMAKE_CXX_COMPILER ${MINGW_TRIPLE}-clang++)
