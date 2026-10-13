@@ -46,6 +46,17 @@ DLLs from an IPA silently.
 
 ## Latest macOS build attempt
 
+Run [38399874571](https://github.com/CheatoOfficial/Madeira/actions/runs/38399874571)
+for commit `e375565babe2889f43ca416cea857a98b296ddf3` failed at the first
+FEX ARM64X C compilation. The AArch64 driver was passed both `-marm64x` and
+FEX's default `-flto=thin`, causing Clang to reject `-marm64x`. A minimal probe
+with local Clang 23.1.2 reproduces that diagnostic with ThinLTO, while the same
+probe without LTO produces an object containing both ARM64 and ARM64EC code.
+The next attempt disables `ENABLE_LTO` only for the Windows FEX module and
+invalidates its cached configuration. Its full macOS build remains unverified.
+Runtime staging and helper-library builds passed in the failed run; Wine,
+DXMT, Xcode, and IPA packaging were skipped. No IPA was produced.
+
 Run [38257638232](https://github.com/CheatoOfficial/Madeira/actions/runs/38257638232)
 for commit `cf09eebfeab2daebe09fffb9f94e3bb48b54b52b` reached the FEX ARM64EC
 link after the runtime staging and redistributable helper-library steps

@@ -9,6 +9,7 @@ if [ -f "$B/CMakeCache.txt" ] && { \
     ! grep -q '^TUNE_CPU:STRING=generic$' "$B/CMakeCache.txt" || \
     ! grep -q '^MINGW_TRIPLE:STRING=arm64ec-w64-mingw32$' "$B/CMakeCache.txt" || \
     ! grep -q '^FEX_IOS_HOST_BUILD:BOOL=ON$' "$B/CMakeCache.txt" || \
+    ! grep -q '^ENABLE_LTO:BOOL=OFF$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST -marm64x$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST -marm64x$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_ASM_FLAGS:STRING=-marm64x$' "$B/CMakeCache.txt" || \
@@ -24,6 +25,7 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
         -DCMAKE_TOOLCHAIN_FILE="$R/FEX/Data/CMake/toolchain_mingw.cmake" \
         -DMINGW_TRIPLE=arm64ec-w64-mingw32 \
         -DFEX_IOS_HOST_BUILD=ON \
+        -DENABLE_LTO=OFF \
         -DCMAKE_C_FLAGS='-DFEX_IOS_HOST -marm64x' \
         -DCMAKE_CXX_FLAGS='-DFEX_IOS_HOST -marm64x' \
         -DCMAKE_ASM_FLAGS=-marm64x \
@@ -33,6 +35,8 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
         -DBUILD_FEXCONFIG=ON -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON \
         -DBUILD_TESTING=OFF -DBUILD_THUNKS=OFF -DENABLE_ASSERTIONS=OFF
 fi
+# Clang cannot combine -marm64x hybrid objects with FEX's default ThinLTO.
+# Keep this Windows module's LTO disabled; the native iOS build is separate.
 EC_CXX="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang++"
 LLVM_NM="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin/llvm-nm"
 EC_TARGET=aarch64-w64-windows-gnu
