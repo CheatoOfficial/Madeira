@@ -114,7 +114,10 @@ jobs:
 
       - name: Install FEX build tools
         run: |
-          brew install cmake ninja ccache llvm p7zip
+          brew install cmake ninja ccache llvm p7zip bison
+          # macOS ships Bison 2.x; Wine requires 3.0+. Homebrew's is keg-only.
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          "$(brew --prefix bison)/bin/bison" --version
           xcodebuild -downloadComponent MetalToolchain 2>&1 | tee build-evidence/metal-toolchain.log
 
       - name: Stage verified Microsoft runtime files for the ephemeral build

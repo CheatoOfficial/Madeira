@@ -46,6 +46,20 @@ DLLs from an IPA silently.
 
 ## Latest macOS build attempt
 
+Run [38411474574](https://github.com/CheatoOfficial/Madeira/actions/runs/38411474574)
+for commit `a78817bbc146111dd61c89fc209015c6887f7a09` successfully compiled and
+linked the plain ARM64EC FEX module with LTO disabled and an explicit ARM64EC
+assembly target. `xtajit64.dll` was staged on the runner (5,443,584 bytes).
+This verifies the FEX build only; its assembly emitted reserved-register
+warnings, and runtime behavior remains unverified on a physical device.
+
+Wine configuration then failed because macOS's system Bison was older than
+the required 3.0. The next attempt installs Homebrew Bison and adds its keg-only
+bin directory to `GITHUB_PATH` for subsequent Wine configuration/build steps.
+The Wine PE script's stale `20260421` compiler/strip path is also corrected to
+the workflow's pinned `20261006` toolchain. Wine, DXMT, Xcode, and IPA
+validation remain incomplete; no IPA was produced or published.
+
 Run [38408454021](https://github.com/CheatoOfficial/Madeira/actions/runs/38408454021)
 for commit `a000e08cbe6aea5838d4ba6b69aa03131618d872` confirmed that disabling
 LTO allows hybrid ARM64X compilation. It reached 63% of the Windows FEX target
@@ -60,7 +74,8 @@ The same probe links a plain ARM64EC DLL with recursive-mutex operations,
 `RtlIsEcCode`, and an assembly function when LTO is disabled and assembly is
 explicitly targeted at ARM64EC. The next attempt applies those settings to FEX,
 preserving its EC code check rather than adding a native ARM64 API workaround.
-The full macOS build remains unverified; no IPA has been produced.
+Run `38411474574` verified those settings for FEX; the full app build and IPA
+remain unverified.
 
 Run [38399874571](https://github.com/CheatoOfficial/Madeira/actions/runs/38399874571)
 for commit `e375565babe2889f43ca416cea857a98b296ddf3` failed at the first
