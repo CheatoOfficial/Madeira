@@ -46,6 +46,17 @@ DLLs from an IPA silently.
 
 ## Latest macOS build attempt
 
+Run [38414145084](https://github.com/CheatoOfficial/Madeira/actions/runs/38414145084)
+for commit `3624aa8746a87ca5f7edab502961cc0cc7e0c051` linked FEX again and
+passed the Bison version and pinned ARM64EC compiler checks. Wine configuration
+then stopped in `makedep` on `ios_srv_stats.h`, which is included conditionally
+by `dlls/ntdll/unix/sync.c` but lives in Madeira's shim directory. Wine's
+dependency scanner processes those includes regardless of `WINE_IOS`.
+The next attempt stages byte-identical copies of the five existing iOS
+headers beside that source before both Wine configurations, refusing to
+overwrite differing files. No compiler system-shim search path is added.
+Wine, DXMT, Xcode, and IPA validation remain incomplete; no IPA was produced.
+
 Run [38411474574](https://github.com/CheatoOfficial/Madeira/actions/runs/38411474574)
 for commit `a78817bbc146111dd61c89fc209015c6887f7a09` successfully compiled and
 linked the plain ARM64EC FEX module with LTO disabled and an explicit ARM64EC

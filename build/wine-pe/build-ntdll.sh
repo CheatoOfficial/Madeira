@@ -9,6 +9,7 @@ set -eu
 R="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TC="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin"
 export PATH="$TC:$PATH"
+bash "$R/build/wine-pe/stage-ios-headers.sh"
 B="$R/wine/build-arm64ec"
 if [ ! -f "$B/config.status" ]; then
     mkdir -p "$B" && cd "$B" && ../configure --enable-archs=arm64ec --without-x --disable-tests

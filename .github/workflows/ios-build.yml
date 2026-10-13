@@ -215,6 +215,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash build/wine-pe/stage-ios-headers.sh
           cd wine
           mkdir -p build-macos
           cd build-macos
