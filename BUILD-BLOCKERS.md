@@ -46,14 +46,30 @@ DLLs from an IPA silently.
 
 ## Latest macOS build attempt
 
+Run [38408454021](https://github.com/CheatoOfficial/Madeira/actions/runs/38408454021)
+for commit `a000e08cbe6aea5838d4ba6b69aa03131618d872` confirmed that disabling
+LTO allows hybrid ARM64X compilation. It reached 63% of the Windows FEX target
+before the native ARM64 half failed on undeclared `RtlIsEcCode` in
+`Frontend.cpp`; MinGW declares that API for x86_64/ARM64EC, not native ARM64.
+
+Minimal probes using the SHA-256-verified Windows package of the same pinned
+LLVM-MinGW `20261006` reproduce both earlier plain ARM64EC link failures:
+ThinLTO loses libc++/exception-runtime EC symbols, and assembly compiled with
+the AArch64 driver's default target leaves EC assembly exports unresolved.
+The same probe links a plain ARM64EC DLL with recursive-mutex operations,
+`RtlIsEcCode`, and an assembly function when LTO is disabled and assembly is
+explicitly targeted at ARM64EC. The next attempt applies those settings to FEX,
+preserving its EC code check rather than adding a native ARM64 API workaround.
+The full macOS build remains unverified; no IPA has been produced.
+
 Run [38399874571](https://github.com/CheatoOfficial/Madeira/actions/runs/38399874571)
 for commit `e375565babe2889f43ca416cea857a98b296ddf3` failed at the first
 FEX ARM64X C compilation. The AArch64 driver was passed both `-marm64x` and
 FEX's default `-flto=thin`, causing Clang to reject `-marm64x`. A minimal probe
 with local Clang 23.1.2 reproduces that diagnostic with ThinLTO, while the same
 probe without LTO produces an object containing both ARM64 and ARM64EC code.
-The next attempt disables `ENABLE_LTO` only for the Windows FEX module and
-invalidates its cached configuration. Its full macOS build remains unverified.
+Run `38408454021` then disabled `ENABLE_LTO` only for the Windows FEX module
+and invalidated its cached configuration, reaching the new failure above.
 Runtime staging and helper-library builds passed in the failed run; Wine,
 DXMT, Xcode, and IPA packaging were skipped. No IPA was produced.
 

@@ -57,7 +57,7 @@ jobs:
             toolchains/ffmpeg-ios
             toolchains/llvm-host-build
             toolchains/llvm-ios-build
-          key: ios-native-deps-v3-macos15-xcode16.4-fex7b528d8-wine65fab176-dxmt550735c-llvmmingw20261006-arm64x3-nolto
+          key: ios-native-deps-v3-macos15-xcode16.4-fex7b528d8-wine65fab176-dxmt550735c-llvmmingw20261006-arm64ec-nolto-asm1
 
       - name: Build readiness audit
         id: audit

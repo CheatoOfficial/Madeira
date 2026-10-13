@@ -10,12 +10,12 @@ if [ -f "$B/CMakeCache.txt" ] && { \
     ! grep -q '^MINGW_TRIPLE:STRING=arm64ec-w64-mingw32$' "$B/CMakeCache.txt" || \
     ! grep -q '^FEX_IOS_HOST_BUILD:BOOL=ON$' "$B/CMakeCache.txt" || \
     ! grep -q '^ENABLE_LTO:BOOL=OFF$' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST -marm64x$' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST -marm64x$' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_ASM_FLAGS:STRING=-marm64x$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_ASM_FLAGS:STRING=--target=arm64ec-w64-windows-gnu -DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
     ! grep -q 'llvm-mingw-20261006-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_C_COMPILER_TARGET:STRING=aarch64-w64-windows-gnu$' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_CXX_COMPILER_TARGET:STRING=aarch64-w64-windows-gnu$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_C_COMPILER_TARGET:STRING=arm64ec-w64-windows-gnu$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_CXX_COMPILER_TARGET:STRING=arm64ec-w64-windows-gnu$' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_DISABLE_FIND_PACKAGE_fmt:BOOL=TRUE$' "$B/CMakeCache.txt"; \
 }; then
     rm -rf "$B"
@@ -26,23 +26,23 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
         -DMINGW_TRIPLE=arm64ec-w64-mingw32 \
         -DFEX_IOS_HOST_BUILD=ON \
         -DENABLE_LTO=OFF \
-        -DCMAKE_C_FLAGS='-DFEX_IOS_HOST -marm64x' \
-        -DCMAKE_CXX_FLAGS='-DFEX_IOS_HOST -marm64x' \
-        -DCMAKE_ASM_FLAGS=-marm64x \
+        -DCMAKE_C_FLAGS=-DFEX_IOS_HOST \
+        -DCMAKE_CXX_FLAGS=-DFEX_IOS_HOST \
+        -DCMAKE_ASM_FLAGS='--target=arm64ec-w64-windows-gnu -DFEX_IOS_HOST' \
         -DTUNE_CPU=generic \
         -DCMAKE_DISABLE_FIND_PACKAGE_fmt=TRUE \
         -DENABLE_FEX_ALLOCATOR=ON -DENABLE_JEMALLOC_GLIBC_ALLOC=ON -DENABLE_OFFLINE_RUNTIME=ON \
         -DBUILD_FEXCONFIG=ON -DENABLE_CLANG_THUNKS=ON -DENABLE_CCACHE=ON \
         -DBUILD_TESTING=OFF -DBUILD_THUNKS=OFF -DENABLE_ASSERTIONS=OFF
 fi
-# Clang cannot combine -marm64x hybrid objects with FEX's default ThinLTO.
-# Keep this Windows module's LTO disabled; the native iOS build is separate.
+# ThinLTO loses ARM64EC runtime symbols with this pinned toolchain. CMake's
+# C/C++ compiler targets also do not set the ASM target, so pass it explicitly.
 EC_CXX="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin/aarch64-w64-mingw32-clang++"
 LLVM_NM="$R/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin/llvm-nm"
-EC_TARGET=aarch64-w64-windows-gnu
-"$EC_CXX" --target="$EC_TARGET" -marm64x --version
+EC_TARGET=arm64ec-w64-windows-gnu
+"$EC_CXX" --target="$EC_TARGET" --version
 for runtime in libc++.a libc++abi.a libunwind.a; do
-    archive="$("$EC_CXX" --target="$EC_TARGET" -marm64x -print-file-name="$runtime")"
+    archive="$("$EC_CXX" --target="$EC_TARGET" -print-file-name="$runtime")"
     printf 'ARM64EC runtime %s: %s\n' "$runtime" "$archive"
     if [ -f "$archive" ]; then
         "$LLVM_NM" --demangle --defined-only "$archive" | grep -E -m 8 'recursive_mutex::lock|__gxx_personality_seh0|__shared_mutex_base::lock' || true

@@ -7,11 +7,11 @@ diff --git a/Data/CMake/toolchain_mingw.cmake b/Data/CMake/toolchain_mingw.cmake
  set(CMAKE_CXX_COMPILER ${MINGW_TRIPLE}-clang++)
 +if(MINGW_TRIPLE STREQUAL "arm64ec-w64-mingw32")
 +  # LLVM-MinGW 20260812+ provides ARM64X runtime libraries under the AArch64
-+  # sysroot; compile hybrid ARM64X objects so both EC and AArch64 symbols exist.
++  # sysroot; use its driver with an explicit plain ARM64EC target.
 +  set(CMAKE_C_COMPILER aarch64-w64-mingw32-clang)
 +  set(CMAKE_CXX_COMPILER aarch64-w64-mingw32-clang++)
-+  set(CMAKE_C_COMPILER_TARGET aarch64-w64-windows-gnu CACHE STRING "" FORCE)
-+  set(CMAKE_CXX_COMPILER_TARGET aarch64-w64-windows-gnu CACHE STRING "" FORCE)
++  set(CMAKE_C_COMPILER_TARGET arm64ec-w64-windows-gnu CACHE STRING "" FORCE)
++  set(CMAKE_CXX_COMPILER_TARGET arm64ec-w64-windows-gnu CACHE STRING "" FORCE)
 +endif()
  set(CMAKE_DLLTOOL ${MINGW_TRIPLE}-dlltool)
  set(CMAKE_AR ${MINGW_TRIPLE}-ar)
