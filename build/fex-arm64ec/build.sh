@@ -9,8 +9,9 @@ if [ -f "$B/CMakeCache.txt" ] && { \
     ! grep -q '^TUNE_CPU:STRING=generic$' "$B/CMakeCache.txt" || \
     ! grep -q '^MINGW_TRIPLE:STRING=arm64ec-w64-mingw32$' "$B/CMakeCache.txt" || \
     ! grep -q '^FEX_IOS_HOST_BUILD:BOOL=ON$' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
-    ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_C_FLAGS:STRING=-DFEX_IOS_HOST -marm64x$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_CXX_FLAGS:STRING=-DFEX_IOS_HOST -marm64x$' "$B/CMakeCache.txt" || \
+    ! grep -q '^CMAKE_ASM_FLAGS:STRING=-marm64x$' "$B/CMakeCache.txt" || \
     ! grep -q 'llvm-mingw-20261006-ucrt-macos-universal/bin/arm64ec-w64-mingw32-clang' "$B/CMakeCache.txt" || \
     ! grep -q '^CMAKE_DISABLE_FIND_PACKAGE_fmt:BOOL=TRUE$' "$B/CMakeCache.txt"; \
 }; then
@@ -21,8 +22,9 @@ if [ ! -f "$B/CMakeCache.txt" ]; then
         -DCMAKE_TOOLCHAIN_FILE="$R/FEX/Data/CMake/toolchain_mingw.cmake" \
         -DMINGW_TRIPLE=arm64ec-w64-mingw32 \
         -DFEX_IOS_HOST_BUILD=ON \
-        -DCMAKE_C_FLAGS=-DFEX_IOS_HOST \
-        -DCMAKE_CXX_FLAGS=-DFEX_IOS_HOST \
+        -DCMAKE_C_FLAGS='-DFEX_IOS_HOST -marm64x' \
+        -DCMAKE_CXX_FLAGS='-DFEX_IOS_HOST -marm64x' \
+        -DCMAKE_ASM_FLAGS=-marm64x \
         -DTUNE_CPU=generic \
         -DCMAKE_DISABLE_FIND_PACKAGE_fmt=TRUE \
         -DENABLE_FEX_ALLOCATOR=ON -DENABLE_JEMALLOC_GLIBC_ALLOC=ON -DENABLE_OFFLINE_RUNTIME=ON \

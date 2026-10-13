@@ -55,13 +55,15 @@ not the required EC C++ method definitions. The normal link consequently
 failed on `__gxx_personality_seh0`, mutex and shared-mutex methods, filesystem,
 and other libc++ symbols. Wine, DXMT, Xcode, and IPA packaging were skipped.
 
-The next attempt returns to official LLVM-MinGW `20261006`, whose runtime
-archives contain the required EC definitions. Its sysroot symlink restores
-library lookup, but the generated response file placed the runtime archives
-before later FEX static archives. The build script now appends a second
-`-lc++ -lc++abi -lunwind` pass after those archives to resolve symbols
-introduced later in the link. This is an unverified link-order fix; no full
-build or IPA has succeeded.
+Run [38264269586](https://github.com/CheatoOfficial/Madeira/actions/runs/38264269586)
+for commit `093b4b0040dea193596c852818007ff6c3c9c492` confirmed that a second
+`-lc++ -lc++abi -lunwind` pass after the FEX static archives does not fix the
+unresolved EC symbols. Although the runtime archive lists ordinary libc++
+definitions, the linker requires EC definitions. Upstream LLVM-MinGW's
+ARM64X change explains this mismatch: its AArch64 libc++ libraries are built
+with `-marm64x` to include ARM64EC support. The next attempt adds `-marm64x` to
+FEX C, C++, and assembly compilation so FEX matches those hybrid runtime
+archives. This is unverified; no full build or IPA has succeeded.
 
 Earlier attempts established that `<cstdlib>` alone did not fix FEX's
 `std::strtoll` declarations, while adding `<stdlib.h>` and using the global
