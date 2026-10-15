@@ -153,6 +153,8 @@ jobs:
           echo 'a7a19b11048e89372637d26279cdb7c430ed3cf8c1e224310421312bf986ebf6  /tmp/llvm-mingw.tar.xz' | shasum -a 256 -c -
           tar -xJf /tmp/llvm-mingw.tar.xz -C toolchains/
           ln -sfn aarch64-w64-mingw32 toolchains/llvm-mingw-20261006-ucrt-macos-universal/arm64ec-w64-mingw32
+          # Helper-script exports do not survive into later Actions steps.
+          echo "$GITHUB_WORKSPACE/toolchains/llvm-mingw-20261006-ucrt-macos-universal/bin" >> "$GITHUB_PATH"
           git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-ios-apple-host.patch"
           git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-arm64ec-ios-link.patch"
           git -C FEX apply "$GITHUB_WORKSPACE/patches/fex-arm64ec-cstdlib.patch"
@@ -165,6 +167,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          arm64ec-w64-mingw32-clang --version
           cd wine/build-arm64ec
           for module in kernelbase kernel32 user32 gdi32 win32u advapi32 bcrypt crypt32 secur32 ws2_32 ole32 combase shell32 shlwapi ucrtbase vcruntime140 msvcp140 ucrtbase winmm dsound wineios; do
             make -C "../../wine/build-arm64ec/dlls/$module" 2>&1 | tee "$GITHUB_WORKSPACE/build-evidence/wine-pe-$module.log"
